@@ -2,7 +2,7 @@
 name = "dlmi"
 version = "0.1.0"
 description = "a university project for deep learning for medical imaging"
-authors = ["jonas.milkovits <jonas.milkovits@stud.tu-darmstadt.de>", "frederick wichert <frederick.wichert@stud.tu-darmstadt.de"]
+authors = ["jonas.milkovits <jonas.milkovits@stud.tu-darmstadt.de>", "frederick wichert <frederick.wichert@stud.tu-darmstadt.de>", "Marlon May <marlon.may@stud.tu-darmstadt.de>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
