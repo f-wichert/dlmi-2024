@@ -9,7 +9,14 @@ data:
     images_tif_dir: "Tissue Images"
     binary_masks: "processed/binary_masks"
     color_masks: "processed/color_masks"
-    augment: [ ]
+    augment_before:
+    augment_after:
+      patch:
+        size_x: 128
+        size_y: 128
+        step: 128
+        binary_dir: "patch/bin"
+        image_dir: "patch/image"
   test:
     dir: "train"
     annotations_xml_dir: "Annotations"

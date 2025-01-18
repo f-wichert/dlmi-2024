@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
+from patchify import patchify
 from skimage.draw import polygon
 from dlmi.shared.config import load_config
 import os
@@ -13,9 +14,52 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-AUGMENTATION_METHODS = {
-    # name: function
-}
+
+def creat_patches(file_pairs, config, data_dir):
+    patch_img_dir = data_dir / Path(config['image_dir'])
+    patch_bin_dir = data_dir / Path(config['binary_dir'])
+
+    patch_img_dir.mkdir(parents=True, exist_ok=True)
+    patch_bin_dir.mkdir(parents=True, exist_ok=True)
+
+    augmented_files = []
+    for img_path, bin_mask, color_mask, xml_path in file_pairs:
+        img = np.array(Image.open(img_path))
+
+        img_patches = patchify(img, (config['size_x'], config['size_y'], 3) if len(img.shape) == 3 else (config['size_x'], config['size_y']), step=config['step'])
+        bin_patches = patchify(bin_mask, (config['size_x'], config['size_y']), step=config['step'])
+
+        base_name = Path(img_path).stem
+
+        # Save patches
+        for i in range(img_patches.shape[0]):
+            for j in range(img_patches.shape[1]):
+                img_patch_filename = f"{base_name}_patch_img_{i}_{j}.png"
+                bin_patch_filename = f"{base_name}_patch_bin_{i}_{j}.png"
+
+                img_patch_path = patch_img_dir / img_patch_filename
+                bin_patch_path = patch_bin_dir / bin_patch_filename
+
+                img_patch = img_patches[i, j].squeeze()
+                bin_patch = bin_patches[i, j].squeeze()
+
+                if np.sum(bin_patch) == 0:
+                    continue
+
+                if bin_patch.dtype == np.float32 or bin_patch.dtype == np.float64:
+                    bin_patch = (bin_patch * 255).astype(np.uint8)
+                elif bin_patch.dtype != np.uint8:
+                    bin_patch = bin_patch.astype(np.uint8)
+
+                if img_patch.dtype != np.uint8:
+                    img_patch = img_patch.astype(np.uint8)
+
+                Image.fromarray(img_patch).save(img_patch_path)
+                Image.fromarray(bin_patch).save(bin_patch_path)
+
+                augmented_files.append((str(img_patch_path), str(bin_patch_path), "", xml_path))
+
+    return augmented_files
 
 
 def poly2mask(vertex_row_coords, vertex_col_coords, shape):
@@ -65,7 +109,7 @@ def he_to_binary_mask(im_file, xml_file):
 
         polygon_mask = poly2mask(smaller_y, smaller_x, (nrow, ncol))
 
-        binary_mask = binary_mask + zz * (1 - np.minimum(1, binary_mask)) * polygon_mask
+        binary_mask = binary_mask + polygon_mask  #  * zz * (1 - np.minimum(1, binary_mask))
 
         random_color = np.random.rand(3)
         for i in range(3):
@@ -141,6 +185,7 @@ def save_mask(mask, output_path, format='png'):
         if mask.dtype == np.float32 or mask.dtype == np.float64:
             mask = (mask * 255).astype(np.uint8)
         Image.fromarray(mask).save(output_path)
+    return output_path
 
 
 def overlay_mask_on_image(image, mask, alpha=0.5):
@@ -173,35 +218,44 @@ def get_matching_files(xml_dir, tif_dir):
     ) for name in common_names]
 
 
-def augment_data(file_pairs, methods):
-    augmented_pairs = file_pairs.copy()
+def augment_data_after_masking(file_pairs, methods, data_dir):
+    AUGMENTATION_METHODS = {
+        # name: function
+        "patch": creat_patches,
+    }
+    if not methods:
+        return file_pairs
 
     for method_name in methods:
-        try:
-            augment_func = AUGMENTATION_METHODS.get(method_name)
-            if augment_func is None:
-                logging.warning(f"Unknown augmentation method: {method_name}")
-                continue
-
-            new_pairs = []
-            for xml_path, image_path in file_pairs:
-                try:
-                    aug_image_path, aug_xml_path = augment_func(
-                        Path(image_path),
-                        Path(xml_path)
-                    )
-                    new_pairs.append((str(aug_xml_path), str(aug_image_path)))
-                except Exception as e:
-                    logger.error(f"Failed to augment {image_path} with {method_name}: {str(e)}")
-                    continue
-
-            augmented_pairs.extend(new_pairs)
-
-        except Exception as e:
-            logging.error(f"Error applying augmentation method {method_name}: {str(e)}")
+        augment_func = AUGMENTATION_METHODS.get(method_name)
+        if augment_func is None:
+            logging.warning(f"Unknown augmentation method: {method_name}")
             continue
 
-    return augmented_pairs
+        file_pairs = augment_func(file_pairs, methods[method_name], data_dir)
+
+    return file_pairs
+
+
+def augment_data_before_masking(file_pairs, methods, data_dir):
+    AUGMENTATION_METHODS = {
+        # name: function
+    }
+
+    if not methods:
+        return file_pairs
+
+    for method_name in methods:
+        augment_func = AUGMENTATION_METHODS.get(method_name)
+        if augment_func is not None and augment_func["after"]:
+            continue
+        if augment_func is None:
+            logging.warning(f"Unknown augmentation method: {method_name}")
+            continue
+
+        file_pairs = augment_func(file_pairs, methods[method_name], data_dir)
+
+    return file_pairs
 
 
 def main():
@@ -226,18 +280,21 @@ def main():
         if ic.get('limit', None):
             file_pairs = file_pairs[:ic['limit']]
 
-        file_pairs = augment_data(file_pairs, ic['augment'])
+        file_pairs = augment_data_before_masking(file_pairs, ic['augment_before'], base_dir)
+        new_files = []
 
         # Process each pair
         for xml_path, tif_path in tqdm(file_pairs, desc=f"Processing images for {set_type}"):
             binary_mask, color_mask = he_to_binary_mask(tif_path, xml_path)
-
+            new_files.append((tif_path, binary_mask, color_mask, xml_path))
             base_name = Path(xml_path).stem
             binary_out = binary_mask_dir / f"{base_name}.{config['data']['out_format']}"
             color_out = color_mask_dir / f"{base_name}.{config['data']['out_format']}"
 
             save_mask(binary_mask, binary_out, config['data']['out_format'])
             save_mask(color_mask, color_out, config['data']['out_format'])
+
+        augment_data_after_masking(new_files, ic['augment_after'], base_dir)
 
 
 if __name__ == '__main__':
