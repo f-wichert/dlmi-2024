@@ -1,5 +1,7 @@
 # 2024-dlmi
 
+Each config corresponds to one experiment.
+
 ## Data & Challenge
 The data and related challenge can be found here: https://monuseg.grand-challenge.org/Data/
 

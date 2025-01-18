@@ -1,4 +1,22 @@
 data:
   data_dir: "data/"
   test_data_dir: "data/test/"
-  train_data_dir: "data/trtain/"
+  out_format: "png"
+  prepare_for: ['train']
+  train:
+    dir: "train"
+    annotations_xml_dir: "Annotations"
+    images_tif_dir: "Tissue Images"
+    binary_masks: "processed/binary_masks"
+    color_masks: "processed/color_masks"
+    augment: [ ]
+  test:
+    dir: "train"
+    annotations_xml_dir: "Annotations"
+    images_tif_dir: "Tissue Images"
+    binary_masks: "processed/binary_masks"
+    color_masks: "processed/color_masks"
+    augment: []
+
+train:
+
