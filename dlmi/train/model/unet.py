@@ -1,84 +1,67 @@
+import torch
 import torch.nn as nn
 
+
 class UNet(nn.Module):
-    def __init__(self,):
-        super().__init__()
-        #self.device = device
-        #self.dropout = nn.Dropout(dropout)
-        
-        self.en1 = Block(3, 64, 64)
-        self.en2 = Block(64, 128, 128)
-        self.en3 = Block(128, 256, 256)
-        self.en4 = Block(256, 512, 512)
-        self.en5 = Block(512, 1024, 512)
-        
-        self.upsample4 = nn.ConvTranspose2d(512, 512, 2, stride = 2)
-        self.de4 = Block(1024, 512, 256)
-        
-        self.upsample3 = nn.ConvTranspose2d(256, 256, 2, stride = 2)
-        self.de3 = Block(512, 256, 128)
-        
-        self.upsample2 = nn.ConvTranspose2d(128, 128, 2, stride = 2)
-        self.de2 = Block(256, 128, 64)
-        
-        self.upsample1 = nn.ConvTranspose2d(64, 64, 2, stride = 2)
-        self.de1 = Block(128, 64, 64)
-        
-        self.conv_last = nn.Conv2d(64, 1, kernel_size=1, stride = 1, padding = 0)
-        
+    def __init__(self, in_channels=3, out_channels=1):
+        super(UNet, self).__init__()
+
+        def conv_block(in_ch, out_ch):
+            return nn.Sequential(
+                nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
+            )
+
+        self.enc1 = conv_block(in_channels, 64)  # Shape: (B, 64, H, W)
+        self.enc2 = conv_block(64, 128)  # Shape: (B, 128, H/2, W/2)
+        self.enc3 = conv_block(128, 256)  # Shape: (B, 256, H/4, W/4)
+        self.enc4 = conv_block(256, 512)  # Shape: (B, 512, H/8, W/8)
+
+        self.pool = nn.MaxPool2d(2)
+
+        self.bottleneck = conv_block(512, 1024)  # Shape: (B, 1024, H/16, W/16)
+
+        self.upconv4 = nn.ConvTranspose2d(
+            1024, 512, kernel_size=2, stride=2
+        )  # Shape: (B, 512, H/8, W/8)
+        self.dec4 = conv_block(1024, 512)  # Shape: (B, 512, H/8, W/8)
+        self.upconv3 = nn.ConvTranspose2d(
+            512, 256, kernel_size=2, stride=2
+        )  # Shape: (B, 256, H/4, W/4)
+        self.dec3 = conv_block(512, 256)  # Shape: (B, 256, H/4, W/4)
+        self.upconv2 = nn.ConvTranspose2d(
+            256, 128, kernel_size=2, stride=2
+        )  # Shape: (B, 128, H/2, W/2)
+        self.dec2 = conv_block(256, 128)  # Shape: (B, 128, H/2, W/2)
+        self.upconv1 = nn.ConvTranspose2d(
+            128, 64, kernel_size=2, stride=2
+        )  # Shape: (B, 64, H, W)
+        self.dec1 = conv_block(128, 64)  # Shape: (B, 64, H, W)
+
+        self.final = nn.Conv2d(
+            64, out_channels, kernel_size=1
+        )  # Shape: (B, out_channels, H, W)
+
     def forward(self, x):
-        # x: [bs, 3, 256, 256]
-        
-        x, e1 = self.en1(x)
-        # x: [bs, 64, 128, 128]
-        # e1: [bs, 64, 256, 256]
-        
-        x, e2 = self.en2(x)
-        # x: [bs, 128, 64, 64]
-        # e2: [bs, 128, 128, 128]
-        
-        x, e3 = self.en3(x)
-        # x: [bs, 256, 32, 32]
-        # e3: [bs, 256, 64, 64]
-        
-        x, e4 = self.en4(x)
-        # x: [bs, 512, 16, 16]
-        # e4: [bs, 512, 32, 32]
-        
-        _, x = self.en5(x)
-        # x: [bs, 512, 16, 16]
-        
-        
-        x = self.upsample4(x)
-        # x: [bs, 512, 32, 32]
-        x = torch.cat([x, e4], dim=1)
-        # x: [bs, 1024, 32, 32]
-        _,  x = self.de4(x)
-        # x: [bs, 256, 32, 32]
-        
-        x = self.upsample3(x)
-        # x: [bs, 256, 64, 64]
-        x = torch.cat([x, e3], dim=1)
-        # x: [bs, 512, 64, 64]
-        _, x = self.de3(x)
-        # x: [bs, 128, 64, 64]
-        
-        x = self.upsample2(x)
-        # x: [bs, 128, 128, 128]
-        x = torch.cat([x, e2], dim=1)
-        # x: [bs, 256, 128, 128]
-        _, x = self.de2(x)
-        # x: [bs, 64, 128, 128]
-        
-        x = self.upsample1(x)
-        # x: [bs, 64, 256, 256]
-        x = torch.cat([x, e1], dim=1)
-        # x: [bs, 128, 256,256, 256
-        _, x = self.de1(x)
-        # x: [bs, 64, 256, 256]
-        
-        x = self.conv_last(x)
-        # x: [bs, 1, 256, 256]
-        
-        # x = x.squeeze(1)         
-        return x
+        enc1 = self.enc1(x)  # (B, 64, H, W)
+        enc2 = self.enc2(self.pool(enc1))  # (B, 128, H/2, W/2)
+        enc3 = self.enc3(self.pool(enc2))  # (B, 256, H/4, W/4)
+        enc4 = self.enc4(self.pool(enc3))  # (B, 512, H/8, W/8)
+
+        bottleneck = self.bottleneck(self.pool(enc4))  # (B, 1024, H/16, W/16)
+
+        dec4 = self.dec4(
+            torch.cat((self.upconv4(bottleneck), enc4), dim=1)
+        )  # (B, 512, H/8, W/8)
+        dec3 = self.dec3(
+            torch.cat((self.upconv3(dec4), enc3), dim=1)
+        )  # (B, 256, H/4, W/4)
+        dec2 = self.dec2(
+            torch.cat((self.upconv2(dec3), enc2), dim=1)
+        )  # (B, 128, H/2, W/2)
+        dec1 = self.dec1(torch.cat((self.upconv1(dec2), enc1), dim=1))  # (B, 64, H, W)
+
+        return self.final(dec1)  # (B, out_channels, H, W)
+

@@ -18,7 +18,7 @@ data:
         binary_dir: "patch/bin"
         image_dir: "patch/image"
   test:
-    dir: "train"
+    dir: "test"
     annotations_xml_dir: "Annotations"
     images_tif_dir: "Tissue Images"
     binary_masks: "processed/binary_masks"
@@ -26,4 +26,5 @@ data:
     augment: []
 
 train:
-
+  max_epochs: 200
+  learning_rate: 0.001

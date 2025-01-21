@@ -1,23 +1,23 @@
+import logging
+import os
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import numpy as np
-from PIL import Image, ImageDraw
-import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
+import numpy as np
 from patchify import patchify
+from PIL import Image, ImageDraw
 from skimage.draw import polygon
-from dlmi.shared.config import load_config
-import os
 from tqdm import tqdm
-import logging
 
+from dlmi.shared.config import load_config
 
 logger = logging.getLogger(__name__)
 
 
-def creat_patches(file_pairs, config, data_dir):
-    patch_img_dir = data_dir / Path(config['image_dir'])
-    patch_bin_dir = data_dir / Path(config['binary_dir'])
+def create_patches(file_pairs, config, data_dir):
+    patch_img_dir = data_dir / Path(config["image_dir"])
+    patch_bin_dir = data_dir / Path(config["binary_dir"])
 
     patch_img_dir.mkdir(parents=True, exist_ok=True)
     patch_bin_dir.mkdir(parents=True, exist_ok=True)
@@ -26,12 +26,22 @@ def creat_patches(file_pairs, config, data_dir):
     for img_path, bin_mask, color_mask, xml_path in file_pairs:
         img = np.array(Image.open(img_path))
 
-        img_patches = patchify(img, (config['size_x'], config['size_y'], 3) if len(img.shape) == 3 else (config['size_x'], config['size_y']), step=config['step'])
-        bin_patches = patchify(bin_mask, (config['size_x'], config['size_y']), step=config['step'])
+        img_patches = patchify(
+            img,
+            (
+                (config["size_x"], config["size_y"], 3)
+                if len(img.shape) == 3
+                else (config["size_x"], config["size_y"])
+            ),
+            step=config["step"],
+        )
+        bin_patches = patchify(
+            bin_mask, (config["size_x"], config["size_y"]), step=config["step"]
+        )
 
         base_name = Path(img_path).stem
 
-        # Save patches
+        # save patches
         for i in range(img_patches.shape[0]):
             for j in range(img_patches.shape[1]):
                 img_patch_filename = f"{base_name}_patch_img_{i}_{j}.png"
@@ -57,14 +67,18 @@ def creat_patches(file_pairs, config, data_dir):
                 Image.fromarray(img_patch).save(img_patch_path)
                 Image.fromarray(bin_patch).save(bin_patch_path)
 
-                augmented_files.append((str(img_patch_path), str(bin_patch_path), "", xml_path))
+                augmented_files.append(
+                    (str(img_patch_path), str(bin_patch_path), "", xml_path)
+                )
 
     return augmented_files
 
 
 def poly2mask(vertex_row_coords, vertex_col_coords, shape):
     """Create mask from polygon vertices (similar to MATLAB's poly2mask)."""
-    fill_row_coords, fill_col_coords = polygon(vertex_row_coords, vertex_col_coords, shape)
+    fill_row_coords, fill_col_coords = polygon(
+        vertex_row_coords, vertex_col_coords, shape
+    )
     mask = np.zeros(shape, dtype=np.uint8)
     mask[fill_row_coords, fill_col_coords] = 1
     return mask
@@ -89,27 +103,29 @@ def he_to_binary_mask(im_file, xml_file):
 
     tree = ET.parse(xml_file)
     root = tree.getroot()
-    regions = root.findall('.//Region')
+    regions = root.findall(".//Region")
 
     binary_mask = np.zeros((nrow, ncol), dtype=np.float32)
     color_mask = np.zeros((nrow, ncol, 3), dtype=np.float32)
 
     for zz, region in enumerate(regions, 1):
-        # Extract vertices
+        # extract vertices
         vertices = []
-        for vertex in region.findall('.//Vertex'):
-            x = float(vertex.get('X'))
-            y = float(vertex.get('Y'))
+        for vertex in region.findall(".//Vertex"):
+            x = float(vertex.get("X"))
+            y = float(vertex.get("Y"))
             vertices.append([x, y])
         vertices = np.array(vertices)
 
-        # Split into x and y coordinates
+        # split into x and y coordinates
         smaller_x = vertices[:, 0]
         smaller_y = vertices[:, 1]
 
         polygon_mask = poly2mask(smaller_y, smaller_x, (nrow, ncol))
 
-        binary_mask = binary_mask + polygon_mask  #  * zz * (1 - np.minimum(1, binary_mask))
+        binary_mask = (
+            binary_mask + polygon_mask
+        )  #  * zz * (1 - np.minimum(1, binary_mask))
 
         random_color = np.random.rand(3)
         for i in range(3):
@@ -125,19 +141,19 @@ def show_mask(binary_mask, color_mask, save_path=None):
     plt.subplot(131)
     img = Image.open(color_mask)
     plt.imshow(img)
-    plt.title('Original Image')
-    plt.axis('off')
+    plt.title("Original Image")
+    plt.axis("off")
 
     plt.subplot(132)
     binary_mask = Image.open(binary_mask)
     plt.imshow(binary_mask)
-    plt.title('Binary Mask\n(Unique value per region)')
-    plt.axis('off')
+    plt.title("Binary Mask\n(Unique value per region)")
+    plt.axis("off")
 
     plt.subplot(133)
     plt.imshow(np.clip(color_mask, 0, 1))
-    plt.title('Color Mask\n(Random color per region)')
-    plt.axis('off')
+    plt.title("Color Mask\n(Random color per region)")
+    plt.axis("off")
 
     plt.tight_layout()
     if save_path:
@@ -150,9 +166,9 @@ def show_mask(binary_mask, color_mask, save_path=None):
 def parse_vertices(region):
     """Extract vertex coordinates from a region."""
     vertices = []
-    for vertex in region.findall('.//Vertex'):
-        x = float(vertex.get('X'))
-        y = float(vertex.get('Y'))
+    for vertex in region.findall(".//Vertex"):
+        x = float(vertex.get("X"))
+        y = float(vertex.get("Y"))
         vertices.append((x, y))
     return vertices
 
@@ -163,11 +179,11 @@ def create_binary_mask(xml_content, image_shape):
     root = ET.fromstring(xml_content)
 
     # Create an empty mask
-    mask = Image.new('L', image_shape, 0)
+    mask = Image.new("L", image_shape, 0)
     draw = ImageDraw.Draw(mask)
 
     # Process each region
-    for region in root.findall('.//Region'):
+    for region in root.findall(".//Region"):
         vertices = parse_vertices(region)
         if vertices:
             # Draw the polygon on the mask
@@ -176,9 +192,9 @@ def create_binary_mask(xml_content, image_shape):
     return np.array(mask)
 
 
-def save_mask(mask, output_path, format='png'):
+def save_mask(mask, output_path, format="png"):
     """Save mask array as image file."""
-    if format == 'npy':
+    if format == "npy":
         np.save(output_path, mask)
     else:
         # For image formats, scale to 0-255 if float
@@ -207,21 +223,21 @@ def get_matching_files(xml_dir, tif_dir):
     Find matching XML and TIF files based on their base names.
     Returns a list of tuples (xml_path, tif_path).
     """
-    xml_files = set(f[:-4] for f in os.listdir(xml_dir) if f.endswith('.xml'))
-    tif_files = set(f[:-4] for f in os.listdir(tif_dir) if f.endswith('.tif'))
+    xml_files = set(f[:-4] for f in os.listdir(xml_dir) if f.endswith(".xml"))
+    tif_files = set(f[:-4] for f in os.listdir(tif_dir) if f.endswith(".tif"))
 
     common_names = xml_files & tif_files
 
-    return [(
-        os.path.join(xml_dir, name + '.xml'),
-        os.path.join(tif_dir, name + '.tif')
-    ) for name in common_names]
+    return [
+        (os.path.join(xml_dir, name + ".xml"), os.path.join(tif_dir, name + ".tif"))
+        for name in common_names
+    ]
 
 
 def augment_data_after_masking(file_pairs, methods, data_dir):
     AUGMENTATION_METHODS = {
         # name: function
-        "patch": creat_patches,
+        "patch": create_patches,
     }
     if not methods:
         return file_pairs
@@ -260,42 +276,46 @@ def augment_data_before_masking(file_pairs, methods, data_dir):
 
 def main():
     config = load_config()
-    for set_type in config['data']['prepare_for']:
-        ic = config['data'][set_type]
-        base_dir = Path(config['data']['data_dir']) / ic['dir']
-        binary_mask_dir = base_dir / ic['binary_masks']
-        color_mask_dir = base_dir / ic['color_masks']
+    for set_type in config["data"]["prepare_for"]:
+        ic = config["data"][set_type]
+        base_dir = Path(config["data"]["data_dir"]) / ic["dir"]
+        binary_mask_dir = base_dir / ic["binary_masks"]
+        color_mask_dir = base_dir / ic["color_masks"]
 
-        # Create directories
+        # create directories
         os.makedirs(binary_mask_dir, exist_ok=True)
         os.makedirs(color_mask_dir, exist_ok=True)
 
-        # Get matching files
+        # get matching files
         file_pairs = get_matching_files(
-            base_dir / ic['annotations_xml_dir'],
-            base_dir / ic['images_tif_dir']
+            base_dir / ic["annotations_xml_dir"], base_dir / ic["images_tif_dir"]
         )
         if len(file_pairs) == 0:
             raise RuntimeError()
-        if ic.get('limit', None):
-            file_pairs = file_pairs[:ic['limit']]
+        if ic.get("limit", None):
+            file_pairs = file_pairs[: ic["limit"]]
 
-        file_pairs = augment_data_before_masking(file_pairs, ic['augment_before'], base_dir)
+        file_pairs = augment_data_before_masking(
+            file_pairs, ic["augment_before"], base_dir
+        )
+
         new_files = []
 
-        # Process each pair
-        for xml_path, tif_path in tqdm(file_pairs, desc=f"Processing images for {set_type}"):
+        # process each pair
+        for xml_path, tif_path in tqdm(
+            file_pairs, desc=f"Processing images for {set_type}"
+        ):
             binary_mask, color_mask = he_to_binary_mask(tif_path, xml_path)
             new_files.append((tif_path, binary_mask, color_mask, xml_path))
             base_name = Path(xml_path).stem
             binary_out = binary_mask_dir / f"{base_name}.{config['data']['out_format']}"
             color_out = color_mask_dir / f"{base_name}.{config['data']['out_format']}"
 
-            save_mask(binary_mask, binary_out, config['data']['out_format'])
-            save_mask(color_mask, color_out, config['data']['out_format'])
+            save_mask(binary_mask, binary_out, config["data"]["out_format"])
+            save_mask(color_mask, color_out, config["data"]["out_format"])
 
-        augment_data_after_masking(new_files, ic['augment_after'], base_dir)
+        augment_data_after_masking(new_files, ic["augment_after"], base_dir)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
