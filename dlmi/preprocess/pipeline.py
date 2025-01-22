@@ -1,23 +1,26 @@
 import logging
 import os
 import xml.etree.ElementTree as ET
+from argparse import ArgumentParser
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from patchify import patchify
 from PIL import Image, ImageDraw
 from skimage.draw import polygon
+from skimage.morphology import binary_dilation
 from tqdm import tqdm
 
-from dlmi.shared.config import load_config
+from dlmi.utils.utils import load_experiment_config
 
 logger = logging.getLogger(__name__)
 
 
 def create_patches(file_pairs, config, data_dir):
-    patch_img_dir = data_dir / Path(config["image_dir"])
-    patch_bin_dir = data_dir / Path(config["binary_dir"])
+    patch_img_dir = data_dir / "prepared_images"
+    patch_bin_dir = data_dir / "prepared_binary_mask"
 
     patch_img_dir.mkdir(parents=True, exist_ok=True)
     patch_bin_dir.mkdir(parents=True, exist_ok=True)
@@ -41,14 +44,10 @@ def create_patches(file_pairs, config, data_dir):
 
         base_name = Path(img_path).stem
 
-        # save patches
         for i in range(img_patches.shape[0]):
             for j in range(img_patches.shape[1]):
-                img_patch_filename = f"{base_name}_patch_img_{i}_{j}.png"
-                bin_patch_filename = f"{base_name}_patch_bin_{i}_{j}.png"
-
-                img_patch_path = patch_img_dir / img_patch_filename
-                bin_patch_path = patch_bin_dir / bin_patch_filename
+                img_patch_path = patch_img_dir / f"{base_name}_patch_img_{i}_{j}.png"
+                bin_patch_path = patch_bin_dir / f"{base_name}_patch_bin_{i}_{j}.png"
 
                 img_patch = img_patches[i, j].squeeze()
                 bin_patch = bin_patches[i, j].squeeze()
@@ -84,20 +83,13 @@ def poly2mask(vertex_row_coords, vertex_col_coords, shape):
     return mask
 
 
-def he_to_binary_mask(im_file, xml_file):
-    """
-    Convert H&E image and XML annotations to binary and color masks.
-    Replicates MATLAB function functionality.
-    Based on: https://monuseg.grand-challenge.org/Data/
-        -> https://drive.google.com/file/d/1YDtIiLZX0lQzZp_JbqneHXHvRo45ZWGX/view?usp=sharing
+def get_boarder(mask):
+    dilated = binary_dilation(mask)
+    border = dilated - mask
+    return border
 
-    Args:
-        filename: Base filename without extension
 
-    Returns:
-        binary_mask: Mask where each region has a unique integer value
-        color_mask: RGB mask where each region has a random color
-    """
+def he_to_binary_mask(im_file, xml_file, cell_info):
     with Image.open(im_file) as img:
         ncol, nrow = img.size
 
@@ -106,10 +98,14 @@ def he_to_binary_mask(im_file, xml_file):
     regions = root.findall(".//Region")
 
     binary_mask = np.zeros((nrow, ncol), dtype=np.float32)
+    boarder_mask = np.zeros((nrow, ncol), dtype=np.float32)
     color_mask = np.zeros((nrow, ncol, 3), dtype=np.float32)
+    overlap_mask = np.zeros((nrow, ncol), dtype=np.float32)
+
+    cell_areas = []
+    cell_perimeters = []
 
     for zz, region in enumerate(regions, 1):
-        # extract vertices
         vertices = []
         for vertex in region.findall(".//Vertex"):
             x = float(vertex.get("X"))
@@ -117,21 +113,37 @@ def he_to_binary_mask(im_file, xml_file):
             vertices.append([x, y])
         vertices = np.array(vertices)
 
-        # split into x and y coordinates
         smaller_x = vertices[:, 0]
         smaller_y = vertices[:, 1]
 
         polygon_mask = poly2mask(smaller_y, smaller_x, (nrow, ncol))
+        boarder_mask += get_boarder(polygon_mask)
+        cell_areas.append(np.sum(polygon_mask))
 
-        binary_mask = (
-            binary_mask + polygon_mask
-        )  #  * zz * (1 - np.minimum(1, binary_mask))
+        overlap_mask[np.logical_and(binary_mask > 0, polygon_mask > 0)] = 1.0
+        binary_mask = binary_mask + polygon_mask    #  * zz * (1 - np.minimum(1, binary_mask))
+
+        perimeter = np.sum(np.sqrt(np.diff(smaller_x) ** 2 + np.diff(smaller_y) ** 2))
+        cell_perimeters.append(perimeter)
 
         random_color = np.random.rand(3)
         for i in range(3):
             color_mask[:, :, i] = color_mask[:, :, i] + random_color[i] * polygon_mask
 
-    return binary_mask, color_mask
+    filename = Path(im_file).stem
+    cell_info[str(filename)] = {
+       'num_cells': len(regions),
+       'mean_cell_area': np.mean(cell_areas),
+       'std_cell_area': np.std(cell_areas),
+       'mean_cell_perimeter': np.mean(cell_perimeters),
+       'std_cell_perimeter': np.std(cell_perimeters),
+       'cell_density': len(regions) / (nrow * ncol),
+       'total_cell_area': np.sum(cell_areas),
+       'image_width': ncol,
+       'image_height': nrow
+    }
+
+    return binary_mask, color_mask, overlap_mask, boarder_mask
 
 
 def show_mask(binary_mask, color_mask, save_path=None):
@@ -175,14 +187,10 @@ def parse_vertices(region):
 
 def create_binary_mask(xml_content, image_shape):
     """Create a binary mask from XML annotations."""
-    # Parse XML
     root = ET.fromstring(xml_content)
-
-    # Create an empty mask
     mask = Image.new("L", image_shape, 0)
     draw = ImageDraw.Draw(mask)
 
-    # Process each region
     for region in root.findall(".//Region"):
         vertices = parse_vertices(region)
         if vertices:
@@ -192,9 +200,10 @@ def create_binary_mask(xml_content, image_shape):
     return np.array(mask)
 
 
-def save_mask(mask, output_path, format="png"):
+def save_mask(mask, output_path, out_format="png"):
     """Save mask array as image file."""
-    if format == "npy":
+    output_path = f"{output_path}.{out_format}"
+    if out_format == "npy":
         np.save(output_path, mask)
     else:
         # For image formats, scale to 0-255 if float
@@ -237,7 +246,6 @@ def get_matching_files(xml_dir, tif_dir):
 def augment_data_after_masking(file_pairs, methods, data_dir):
     AUGMENTATION_METHODS = {
         # name: function
-        "patch": create_patches,
     }
     if not methods:
         return file_pairs
@@ -274,48 +282,93 @@ def augment_data_before_masking(file_pairs, methods, data_dir):
     return file_pairs
 
 
-def main():
-    config = load_config()
-    for set_type in config["data"]["prepare_for"]:
-        ic = config["data"][set_type]
-        base_dir = Path(config["data"]["data_dir"]) / ic["dir"]
-        binary_mask_dir = base_dir / ic["binary_masks"]
-        color_mask_dir = base_dir / ic["color_masks"]
+def _create_sub_dirs(base_dir):
+    binary_mask_dir = base_dir / "processed/binary_masks"
+    color_mask_dir = base_dir / "processed/color_masks"
+    overlap_mask_dir = base_dir / "processed/overlap"
+    boarder_mask_dir = base_dir / "processed/boarder"
+    cell_count_dir = base_dir / "processed/cell_counts"
+    no_overlap_mask_dir = base_dir / "processed/no_overlap"
+    os.makedirs(binary_mask_dir, exist_ok=True)
+    os.makedirs(color_mask_dir, exist_ok=True)
+    os.makedirs(cell_count_dir, exist_ok=True)
+    os.makedirs(overlap_mask_dir, exist_ok=True)
+    os.makedirs(boarder_mask_dir, exist_ok=True)
+    return binary_mask_dir, boarder_mask_dir, cell_count_dir, color_mask_dir, overlap_mask_dir, no_overlap_mask_dir
 
-        # create directories
-        os.makedirs(binary_mask_dir, exist_ok=True)
-        os.makedirs(color_mask_dir, exist_ok=True)
 
-        # get matching files
-        file_pairs = get_matching_files(
-            base_dir / ic["annotations_xml_dir"], base_dir / ic["images_tif_dir"]
-        )
-        if len(file_pairs) == 0:
-            raise RuntimeError()
-        if ic.get("limit", None):
-            file_pairs = file_pairs[: ic["limit"]]
+def main(config):
+    """
+    final images and binary masks are always in  <set-type>/prepared_binary_mask or <set-type>/prepared_images.
+    Args:
+        config: Configuration dictionary
 
-        file_pairs = augment_data_before_masking(
-            file_pairs, ic["augment_before"], base_dir
-        )
+    Returns:
+        None
+    """
+    set_type = config["dataset_split"]
+    out_format = config['data']['out_format']
+    data_c = config["data"][set_type]
 
-        new_files = []
+    base_dir = config["dir"] / set_type
+    binary_dir, boarder_dir, cell_count_dir, color_dir, overlap_dir, no_overlap_dir = _create_sub_dirs(base_dir)
 
-        # process each pair
-        for xml_path, tif_path in tqdm(
-            file_pairs, desc=f"Processing images for {set_type}"
-        ):
-            binary_mask, color_mask = he_to_binary_mask(tif_path, xml_path)
-            new_files.append((tif_path, binary_mask, color_mask, xml_path))
-            base_name = Path(xml_path).stem
-            binary_out = binary_mask_dir / f"{base_name}.{config['data']['out_format']}"
-            color_out = color_mask_dir / f"{base_name}.{config['data']['out_format']}"
+    # Create prepared_images directory
+    prepared_images_dir = base_dir / 'prepared_images'
+    prepared_images_dir.mkdir(parents=True, exist_ok=True)
 
-            save_mask(binary_mask, binary_out, config["data"]["out_format"])
-            save_mask(color_mask, color_out, config["data"]["out_format"])
+    cell_info = pd.DataFrame()
 
-        augment_data_after_masking(new_files, ic["augment_after"], base_dir)
+    file_pairs = get_matching_files(
+        config["data_dir"] / set_type / "Annotations",
+        config["data_dir"] / set_type / "Tissue Images"
+    )
+    if data_c["limit"]:
+        file_pairs = file_pairs[: data_c["limit"]]
+
+    file_pairs = augment_data_before_masking(file_pairs, data_c["augment_before"], base_dir)
+
+    processed_files = []
+
+    for xml_path, tif_path in tqdm(file_pairs, desc=f"Processing images for {set_type}"):
+        binary_mask, color_mask, overlap_mask, boarder_mask = he_to_binary_mask(tif_path, xml_path, cell_info)
+        binary_mask_no_overlap = (binary_mask > 0).astype(np.float32) - overlap_mask
+
+        base_name = Path(xml_path).stem
+
+        save_mask(binary_mask, binary_dir / f"{base_name}", out_format)
+        save_mask(color_mask, color_dir / f"{base_name}", out_format)
+        save_mask(boarder_mask, boarder_dir / f"{base_name}-boarder", out_format)
+        save_mask(overlap_mask, overlap_dir / f"{base_name}", out_format)
+        save_mask(binary_mask_no_overlap, binary_dir / f"{base_name}-no-overlap", out_format)
+
+        processed_files.append((tif_path, binary_mask, color_mask, xml_path))
+
+    cell_info.to_csv(cell_count_dir / "cell_counts.csv")
+
+    new_files = []
+    if data_c["patchify"]:
+        new_files = create_patches(processed_files, data_c["patch"], base_dir)
+    else:
+        for xml_path, tif_path in tqdm(file_pairs, desc="Copying files to prepared directory"):
+            base_name = Path(tif_path).stem
+
+            img = Image.open(tif_path)
+            new_image_path = prepared_images_dir / f"{base_name}.{out_format}"
+            img.save(new_image_path)
+
+            new_mask_path = binary_dir / f"{base_name}.{out_format}"
+
+            new_files.append((str(new_image_path), str(new_mask_path)))
+
+    augment_data_after_masking(new_files, data_c["augment_after"], base_dir)
 
 
 if __name__ == "__main__":
-    main()
+    parser = ArgumentParser()
+    parser.add_argument("experiment")
+    parser.add_argument("-d", "--dataset_split", choices=["test", "train"], default="train")
+    args = parser.parse_args()
+    exp = load_experiment_config(args.experiment)
+    exp["dataset_split"] = args.dataset_split
+    main(exp)
