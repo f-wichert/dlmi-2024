@@ -1,3 +1,5 @@
+import logging
+
 import yaml
 import os
 import subprocess
@@ -28,13 +30,13 @@ def run_experiment(name):
     run_command(preprocess_cmd)
 
     # Train model
-    prepare_cmd = f"python dlmi/train/pipeline.py {name}"
-    run_command(prepare_cmd)
+    run_command(f"python dlmi/train/pipeline.py {name}")
 
-    # run_command(f"python dlmi/test/pipeline.py {name}")
+    # Test model
+    run_command(f"python dlmi/inference/pipeline.py {name}")
 
     # Evaluate
-    # run_command(f"python steps/evaluate.py {name}")
+    run_command(f"python dlmi/evaluate/pipeline.py {name}")
 
 
 def main():
@@ -42,15 +44,11 @@ def main():
     setup_environment()
 
     # Load configuration
-    # with open('configs/config.yml', 'r') as f:
-    #     config = yaml.safe_load(f)
+    with open('configs/config.yaml', 'r') as f:
+        config = yaml.safe_load(f)
 
-    # if config.get('dataset'):
-    #     run_command(f"python steps/download.py --dataset {config['dataset']}")
-
-    # experiments = config.get('experiments', [])
-    experiments = ["baseline"]
-    for exp in experiments:
+    for exp in config.keys():
+        logging.info(f"Running experiment {exp}")
         run_experiment(exp)
 
     # run_command(f"python steps/new_meta_eval.py")

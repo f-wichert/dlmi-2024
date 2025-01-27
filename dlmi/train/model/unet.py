@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class UNet(nn.Module):
-    def __init__(self, in_channels=3, out_channels=1):
+    def __init__(self, in_channels=3, out_channels=1, depth=4, pool_factor=2):
         super(UNet, self).__init__()
 
         def conv_block(in_ch, out_ch):
@@ -14,54 +14,53 @@ class UNet(nn.Module):
                 nn.ReLU(inplace=True),
             )
 
-        self.enc1 = conv_block(in_channels, 64)  # Shape: (B, 64, H, W)
-        self.enc2 = conv_block(64, 128)  # Shape: (B, 128, H/2, W/2)
-        self.enc3 = conv_block(128, 256)  # Shape: (B, 256, H/4, W/4)
-        self.enc4 = conv_block(256, 512)  # Shape: (B, 512, H/8, W/8)
+        self.encoder_blocks = nn.ModuleList()
+        self.pools = nn.ModuleList()
+        enc_channels = []
+        enc_out = 32
 
-        self.pool = nn.MaxPool2d(2)
+        for i in range(depth):
+            enc_out = enc_out * pool_factor
+            if i == 0:
+                self.encoder_blocks.append(conv_block(in_channels, enc_out))
+            else:
+                self.encoder_blocks.append(conv_block(int(enc_out / pool_factor), enc_out))
+            self.pools.append(nn.MaxPool2d(2))
+            enc_channels.append(enc_out)
 
-        self.bottleneck = conv_block(512, 1024)  # Shape: (B, 1024, H/16, W/16)
+        self.bottleneck = conv_block(enc_out, enc_out * pool_factor)
 
-        self.upconv4 = nn.ConvTranspose2d(
-            1024, 512, kernel_size=2, stride=2
-        )  # Shape: (B, 512, H/8, W/8)
-        self.dec4 = conv_block(1024, 512)  # Shape: (B, 512, H/8, W/8)
-        self.upconv3 = nn.ConvTranspose2d(
-            512, 256, kernel_size=2, stride=2
-        )  # Shape: (B, 256, H/4, W/4)
-        self.dec3 = conv_block(512, 256)  # Shape: (B, 256, H/4, W/4)
-        self.upconv2 = nn.ConvTranspose2d(
-            256, 128, kernel_size=2, stride=2
-        )  # Shape: (B, 128, H/2, W/2)
-        self.dec2 = conv_block(256, 128)  # Shape: (B, 128, H/2, W/2)
-        self.upconv1 = nn.ConvTranspose2d(
-            128, 64, kernel_size=2, stride=2
-        )  # Shape: (B, 64, H, W)
-        self.dec1 = conv_block(128, 64)  # Shape: (B, 64, H, W)
+        self.upconvs = nn.ModuleList()
+        self.decoder_blocks = nn.ModuleList()
 
-        self.final = nn.Conv2d(
-            64, out_channels, kernel_size=1
-        )  # Shape: (B, out_channels, H, W)
+        for i in range(depth - 1, -1, -1):
+            self.upconvs.append(
+                nn.ConvTranspose2d(
+                    enc_out * pool_factor if i == depth - 1 else enc_channels[i + 1],
+                    enc_channels[i],
+                    kernel_size=pool_factor,
+                    stride=pool_factor
+                )
+            )
+            self.decoder_blocks.append(conv_block(enc_channels[i] * 2, enc_channels[i]))
+
+        self.final = nn.Conv2d(enc_channels[0], out_channels, kernel_size=1)
 
     def forward(self, x):
-        enc1 = self.enc1(x)  # (B, 64, H, W)
-        enc2 = self.enc2(self.pool(enc1))  # (B, 128, H/2, W/2)
-        enc3 = self.enc3(self.pool(enc2))  # (B, 256, H/4, W/4)
-        enc4 = self.enc4(self.pool(enc3))  # (B, 512, H/8, W/8)
+        encoder_outputs = []
 
-        bottleneck = self.bottleneck(self.pool(enc4))  # (B, 1024, H/16, W/16)
+        for block, pool in zip(self.encoder_blocks, self.pools):
+            x = block(x)
+            encoder_outputs.append(x)
+            x = pool(x)
 
-        dec4 = self.dec4(
-            torch.cat((self.upconv4(bottleneck), enc4), dim=1)
-        )  # (B, 512, H/8, W/8)
-        dec3 = self.dec3(
-            torch.cat((self.upconv3(dec4), enc3), dim=1)
-        )  # (B, 256, H/4, W/4)
-        dec2 = self.dec2(
-            torch.cat((self.upconv2(dec3), enc2), dim=1)
-        )  # (B, 128, H/2, W/2)
-        dec1 = self.dec1(torch.cat((self.upconv1(dec2), enc1), dim=1))  # (B, 64, H, W)
+        x = self.bottleneck(x)
 
-        return self.final(dec1)  # (B, out_channels, H, W)
+        for i, (upconv, dec_block) in enumerate(zip(self.upconvs, self.decoder_blocks)):
+            x = upconv(x)
+            enc_output = encoder_outputs[-(i + 1)]
+            x = torch.cat([x, enc_output], dim=1)
+            x = dec_block(x)
+
+        return self.final(x)    # (B, out_channels, H, W)
 

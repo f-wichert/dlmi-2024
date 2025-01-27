@@ -18,6 +18,12 @@ from dlmi.utils.utils import load_experiment_config
 logger = logging.getLogger(__name__)
 
 
+def calculate_padding(dimension, patch_size):
+    if dimension % patch_size == 0:
+        return 0
+    return patch_size - (dimension % patch_size)
+
+
 def create_patches(file_pairs, config, data_dir):
     patch_img_dir = data_dir / "prepared_images"
     patch_bin_dir = data_dir / "prepared_binary_mask"
@@ -28,6 +34,20 @@ def create_patches(file_pairs, config, data_dir):
     augmented_files = []
     for img_path, bin_mask, color_mask, xml_path in file_pairs:
         img = np.array(Image.open(img_path))
+        # pad_h = calculate_padding(img.shape[0], config["size_x"])
+        # pad_w = calculate_padding(img.shape[1], config["size_y"])
+        #
+        # img = np.pad(img,
+        #              pad_width=((0, pad_h), (0, pad_w), (0, 0)) if len(img.shape) == 3
+        #              else ((0, pad_h), (0, pad_w)),
+        #              mode='constant',
+        #              constant_values=0)
+        #
+        # bin_mask = np.pad(bin_mask,
+        #              pad_width=((0, pad_h), (0, pad_w), (0, 0)) if len(bin_mask.shape) == 3
+        #              else ((0, pad_h), (0, pad_w)),
+        #              mode='constant',
+        #              constant_values=0)
 
         img_patches = patchify(
             img,
@@ -38,9 +58,7 @@ def create_patches(file_pairs, config, data_dir):
             ),
             step=config["step"],
         )
-        bin_patches = patchify(
-            bin_mask, (config["size_x"], config["size_y"]), step=config["step"]
-        )
+        bin_patches = patchify(bin_mask, (config["size_x"], config["size_y"]), step=config["step"])
 
         base_name = Path(img_path).stem
 
