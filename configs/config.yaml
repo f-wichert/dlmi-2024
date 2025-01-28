@@ -34,7 +34,7 @@ baseline:
 
   test:
     use_best_model: true  # if false load from model_name
-    model_name: "best_model-v2.ckpt"
+    model_name: "best_model.ckpt"
 
 baseline_large_patch:
   name: "baseline_large_patch"
@@ -71,4 +71,78 @@ baseline_large_patch:
     validation_size: 0.15  # of trainings data
   test:
     use_best_model: true  # if false load from model_name
-    model_name: "best_model-v2.ckpt"
+    model_name: "best_model.ckpt"
+
+baseline_small_patch:
+  name: "baseline_small_patch"
+  data:
+    out_format: "png"
+    train:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+      patch:
+        size_x: 32
+        size_y: 32
+        step: 32
+    test:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+      patch:
+        size_x: 32
+        size_y: 32
+        step: 32
+
+  unet:
+    depth: 4
+    pool_factor: 2
+
+  train:
+    max_epochs: 200
+    learning_rate: 0.0005
+    batch_size: 256
+    use_validation: true
+    validation_size: 0.15  # of trainings data
+  test:
+    use_best_model: true  # if false load from model_name
+    model_name: "best_model.ckpt"
+
+baseline_small_patch_deep:
+  name: "baseline_small_patch_deep"
+  data:
+    out_format: "png"
+    train:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+      patch:
+        size_x: 32
+        size_y: 32
+        step: 32
+    test:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+      patch:
+        size_x: 32
+        size_y: 32
+        step: 32
+
+  unet:
+    depth: 8
+    pool_factor: 2
+
+  train:
+    max_epochs: 200
+    learning_rate: 0.0005
+    batch_size: 256
+    use_validation: true
+    validation_size: 0.15  # of trainings data
+  test:
+    use_best_model: true  # if false load from model_name
+    model_name: "best_model.ckpt"
