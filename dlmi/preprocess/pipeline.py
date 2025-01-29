@@ -32,8 +32,7 @@ def create_patches(file_pairs, config, data_dir):
     patch_bin_dir.mkdir(parents=True, exist_ok=True)
 
     augmented_files = []
-    for img_path, bin_mask, color_mask, xml_path in file_pairs:
-        img = np.array(Image.open(img_path))
+    for img_path, img, bin_mask, color_mask, xml_path in file_pairs:
         # pad_h = calculate_padding(img.shape[0], config["size_x"])
         # pad_w = calculate_padding(img.shape[1], config["size_y"])
         #
@@ -48,6 +47,10 @@ def create_patches(file_pairs, config, data_dir):
         #              else ((0, pad_h), (0, pad_w)),
         #              mode='constant',
         #              constant_values=0)
+        if not isinstance(img, np.ndarray):
+            img = np.array(img)
+        if not isinstance(bin_mask, np.ndarray):
+            bin_mask = np.array(bin_mask)
 
         img_patches = patchify(
             img,
@@ -312,6 +315,7 @@ def _create_sub_dirs(base_dir):
     os.makedirs(cell_count_dir, exist_ok=True)
     os.makedirs(overlap_mask_dir, exist_ok=True)
     os.makedirs(boarder_mask_dir, exist_ok=True)
+    os.makedirs(no_overlap_mask_dir, exist_ok=True)
     return binary_mask_dir, boarder_mask_dir, cell_count_dir, color_mask_dir, overlap_mask_dir, no_overlap_mask_dir
 
 
@@ -335,34 +339,46 @@ def main(config):
     prepared_images_dir = base_dir / 'prepared_images'
     prepared_images_dir.mkdir(parents=True, exist_ok=True)
 
-    cell_info = pd.DataFrame()
+    if config["take_preprocessed"]:
+        logger.info(f"Skipping preprocessing for {set_type}")
+        prepared_images_dir = config["data_dir"] / set_type / "prepared_images"
+        prepared_mask_dir = config["data_dir"] / set_type / "prepared_binary_masks"
+        prepared_images = os.listdir(prepared_images_dir)
+        prepared_masks = os.listdir(prepared_mask_dir)
 
-    file_pairs = get_matching_files(
-        config["data_dir"] / set_type / "Annotations",
-        config["data_dir"] / set_type / "Tissue Images"
-    )
-    if data_c["limit"]:
-        file_pairs = file_pairs[: data_c["limit"]]
+        processed_files = []
+        for img_path, mask_path in zip(prepared_images, prepared_masks):
+            img = Image.open(prepared_images_dir / img_path)
+            mask = Image.open(prepared_mask_dir / mask_path)
+            processed_files.append((img_path, img, mask, None, None))
+        file_pairs = processed_files
+    else:
+        file_pairs = get_matching_files(
+            config["data_dir"] / set_type / "Annotations",
+            config["data_dir"] / set_type / "Tissue Images"
+        )
+        if data_c["limit"]:
+            file_pairs = file_pairs[: data_c["limit"]]
 
-    file_pairs = augment_data_before_masking(file_pairs, data_c["augment_before"], base_dir)
+        file_pairs = augment_data_before_masking(file_pairs, data_c["augment_before"], base_dir)
 
-    processed_files = []
+        processed_files = []
+        cell_info = pd.DataFrame()
+        for xml_path, tif_path in tqdm(file_pairs, desc=f"Processing images for {set_type}"):
+            binary_mask, color_mask, overlap_mask, boarder_mask = he_to_binary_mask(tif_path, xml_path, cell_info)
+            binary_mask_no_overlap = (binary_mask > 0).astype(np.float32) - overlap_mask
+            img = np.array(Image.open(tif_path))
 
-    for xml_path, tif_path in tqdm(file_pairs, desc=f"Processing images for {set_type}"):
-        binary_mask, color_mask, overlap_mask, boarder_mask = he_to_binary_mask(tif_path, xml_path, cell_info)
-        binary_mask_no_overlap = (binary_mask > 0).astype(np.float32) - overlap_mask
+            base_name = Path(xml_path).stem
+            save_mask(binary_mask, binary_dir / base_name, out_format)
+            save_mask(color_mask, color_dir / base_name, out_format)
+            save_mask(boarder_mask, boarder_dir / base_name, out_format)
+            save_mask(overlap_mask, overlap_dir / base_name, out_format)
+            save_mask(binary_mask_no_overlap, no_overlap_dir / base_name, out_format)
 
-        base_name = Path(xml_path).stem
+            processed_files.append((base_name, img, binary_mask, color_mask, xml_path))
 
-        save_mask(binary_mask, binary_dir / f"{base_name}", out_format)
-        save_mask(color_mask, color_dir / f"{base_name}", out_format)
-        save_mask(boarder_mask, boarder_dir / f"{base_name}-boarder", out_format)
-        save_mask(overlap_mask, overlap_dir / f"{base_name}", out_format)
-        save_mask(binary_mask_no_overlap, binary_dir / f"{base_name}-no-overlap", out_format)
-
-        processed_files.append((tif_path, binary_mask, color_mask, xml_path))
-
-    cell_info.to_csv(cell_count_dir / "cell_counts.csv")
+        cell_info.to_csv(cell_count_dir / "cell_counts.csv")
 
     new_files = []
     if data_c["patchify"]:
