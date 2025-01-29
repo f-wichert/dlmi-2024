@@ -62,7 +62,7 @@ def main(config):
             log_model=True
         )
         logger.log_hyperparams(
-            {"monitor_loss": monitor_loss, "monitor_mode": monitor_mode, "experiment_config": config})
+            {"monitor_loss": monitor_loss, "monitor_mode": monitor_mode, **config})
     else:
         logger = TensorBoardLogger(save_dir="./tensorboard_logs")
     trainer = pl.Trainer(
