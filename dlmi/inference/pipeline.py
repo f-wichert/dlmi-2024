@@ -148,9 +148,13 @@ def main(config):
 
     print(f"Found {len(base_names)} original images to reconstruct")
 
+    p_config = config["data"]["test"]["patch"]
     if config["data"]["test"]["patchify"]:
         for base_name in tqdm(base_names, desc="Reconstructing images"):
-            reconstructed = reconstruct_image(pred_dir_patches, pred_files, base_name)
+            reconstructed = reconstruct_image(
+                pred_dir_patches, pred_files, base_name,
+                patch_size=(p_config["size_x"], p_config["size_y"]), step=p_config["step"]
+            )
             output_path = os.path.join(pred_dir, f"{base_name}.png")
             Image.fromarray(reconstructed.astype(np.uint8)).save(output_path)
 
