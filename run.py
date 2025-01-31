@@ -1,14 +1,14 @@
 import logging
-
-import yaml
 import os
 import subprocess
 from pathlib import Path
 
+import yaml
+
 
 def setup_environment():
-    os.environ['PYTHONPATH'] = f"{os.environ.get('PYTHONPATH', '')}:./"
-    os.environ['KAGGLE_CONFIG_DIR'] = str(Path.cwd())
+    os.environ["PYTHONPATH"] = f"{os.environ.get('PYTHONPATH', '')}:./"
+    os.environ["KAGGLE_CONFIG_DIR"] = str(Path.cwd())
 
 
 def run_command(command):
@@ -44,7 +44,7 @@ def main():
     setup_environment()
 
     # Load configuration
-    with open('configs/config.yaml', 'r') as f:
+    with open("configs/config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
     for exp in config.keys():
@@ -54,5 +54,5 @@ def main():
     # run_command(f"python steps/new_meta_eval.py")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

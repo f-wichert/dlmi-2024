@@ -8,9 +8,9 @@ from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader, random_split
 
 from dlmi.data.dataset import CellSegmentationDataset
-from dlmi.utils.utils import load_experiment_config
 from dlmi.train.model.segmentation_model import SegmentationModel
 from dlmi.train.model.unet import UNet
+from dlmi.utils.utils import load_experiment_config
 
 
 def main(config):
@@ -20,28 +20,48 @@ def main(config):
     image_patch_dir = config["dir"] / "train" / "prepared_images"
     mask_patch_dir = config["dir"] / "train" / "prepared_binary_mask"
 
-    full_dataset = CellSegmentationDataset(image_dir=image_patch_dir, mask_dir=mask_patch_dir)
+    full_dataset = CellSegmentationDataset(
+        image_dir=image_patch_dir, mask_dir=mask_patch_dir
+    )
     if config["train"]["use_validation"]:
         val_size = config["train"]["validation_size"]
         train_size = 1 - config["train"]["validation_size"]
         generator = torch.Generator().manual_seed(42)
-        train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size], generator)
+        train_dataset, val_dataset = random_split(
+            full_dataset, [train_size, val_size], generator
+        )
 
-        train_loader = DataLoader(train_dataset, batch_size=config["train"]["batch_size"], shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=config["train"]["batch_size"], shuffle=True)
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=config["train"]["batch_size"],
+            shuffle=True,
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=config["train"]["batch_size"],
+            shuffle=True,
+        )
 
         monitor_loss = "val_dice"
         monitor_mode = "max"
     else:
-        train_loader = DataLoader(full_dataset, batch_size=config["train"]["batch_size"], shuffle=True)
+        train_loader = DataLoader(
+            full_dataset,
+            batch_size=config["train"]["batch_size"],
+            shuffle=True,
+        )
         val_loader = None
         monitor_loss = "train_loss"
         monitor_mode = "min"
 
-    model = UNet(in_channels=3, out_channels=2, depth=config["unet"]["depth"], pool_factor=config["unet"]["pool_factor"])
+    model = UNet(
+        in_channels=3,
+        out_channels=2,
+        depth=config["unet"]["depth"],
+        pool_factor=config["unet"]["pool_factor"],
+    )
     lit_model = SegmentationModel(model, learning_rate=learning_rate)
 
-    ckpt_path = config["dir"] / "checkpoints"
     # checkpoint_callback = ModelCheckpoint(
     #     monitor="train_loss",
     #     dirpath=ckpt_path,
@@ -51,22 +71,20 @@ def main(config):
     # )
     best_model_callback = ModelCheckpoint(
         monitor=monitor_loss,
-        dirpath=ckpt_path,
+        dirpath=config["dir"] / "checkpoints",
         filename="best_model",
         save_top_k=1,
         mode=monitor_mode,
     )
     if config["logger"] == "wandb":
-        logger = WandbLogger(
-            project="dlmi",
-            log_model=True
-        )
+        logger = WandbLogger(project="dlmi", log_model=True)
         logger.log_hyperparams(
-            {"monitor_loss": monitor_loss, "monitor_mode": monitor_mode, **config})
+            {"monitor_loss": monitor_loss, "monitor_mode": monitor_mode, **config}
+        )
     else:
         logger = TensorBoardLogger(save_dir="./tensorboard_logs")
     trainer = pl.Trainer(
-        logger=logger,
+        logger=logger,  # type: ignore
         max_epochs=max_epochs,
         callbacks=[best_model_callback],
         log_every_n_steps=1,
@@ -85,4 +103,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
     exp = load_experiment_config(args.experiment)
     main(exp)
-

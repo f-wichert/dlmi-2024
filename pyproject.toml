@@ -17,6 +17,7 @@ matplotlib = "^3.10.0"
 patchify = "^0.2.3"
 scikit-image = "^0.25.0"
 tensorboard = "^2.18.0"
+pandas = "^2.2.3"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.13.2"

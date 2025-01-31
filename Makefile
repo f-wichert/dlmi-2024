@@ -1,8 +1,5 @@
-preprocess: dlmi/preprocess/pipeline.py
-	python dlmi/preprocess/pipeline.py
-
-train: dlmi/train/pipeline.py
-	python dlmi/train/pipeline.py
+run: run.py
+	python run.py
 
 .PHONY: clean
 clean:

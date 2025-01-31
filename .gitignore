@@ -170,3 +170,4 @@ cython_debug/
 # # Lightning
 # tensorboard_logs/
 checkpoints/
+experiments/
