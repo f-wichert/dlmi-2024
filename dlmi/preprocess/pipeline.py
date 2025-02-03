@@ -32,25 +32,27 @@ def create_patches(file_pairs, config, data_dir):
     patch_bin_dir.mkdir(parents=True, exist_ok=True)
 
     augmented_files = []
-    for img_path, img, bin_mask, color_mask, xml_path in file_pairs:
-        # pad_h = calculate_padding(img.shape[0], config["size_x"])
-        # pad_w = calculate_padding(img.shape[1], config["size_y"])
-        #
-        # img = np.pad(img,
-        #              pad_width=((0, pad_h), (0, pad_w), (0, 0)) if len(img.shape) == 3
-        #              else ((0, pad_h), (0, pad_w)),
-        #              mode='constant',
-        #              constant_values=0)
-        #
-        # bin_mask = np.pad(bin_mask,
-        #              pad_width=((0, pad_h), (0, pad_w), (0, 0)) if len(bin_mask.shape) == 3
-        #              else ((0, pad_h), (0, pad_w)),
-        #              mode='constant',
-        #              constant_values=0)
+    for img_path, img, bin_mask, color_mask, xml_path in tqdm(file_pairs, desc="Creating patches"):
         if not isinstance(img, np.ndarray):
             img = np.array(img)
         if not isinstance(bin_mask, np.ndarray):
             bin_mask = np.array(bin_mask)
+
+        pad_h = calculate_padding(img.shape[0], config["size_x"])
+        pad_w = calculate_padding(img.shape[1], config["size_y"])
+
+        img = np.pad(
+            img,
+            pad_width=((0, pad_h), (0, pad_w), (0, 0)),
+            mode='constant',
+            constant_values=0
+        )
+        bin_mask = np.pad(
+            bin_mask,
+            pad_width=((0, pad_h), (0, pad_w)),
+            mode='constant',
+            constant_values=0
+        )
 
         img_patches = patchify(
             img,
@@ -96,6 +98,22 @@ def create_patches(file_pairs, config, data_dir):
     return augmented_files
 
 
+def shrink_vertices(vertices, shrink_factor=0.8):
+    """
+    Shrink polygon vertices towards their centroid.
+
+    Args:
+        vertices: Numpy array of vertex coordinates
+        shrink_factor: Float between 0 and 1, how much to shrink (1 = no shrink, 0 = shrink to center)
+
+    Returns:
+        Shrunk vertices array
+    """
+    centroid = np.mean(vertices, axis=0)
+    shrunk_vertices = centroid + shrink_factor * (vertices - centroid)
+    return shrunk_vertices
+
+
 def poly2mask(vertex_row_coords, vertex_col_coords, shape):
     """Create mask from polygon vertices (similar to MATLAB's poly2mask)."""
     fill_row_coords, fill_col_coords = polygon(
@@ -112,7 +130,7 @@ def get_boarder(mask):
     return border
 
 
-def he_to_binary_mask(im_file, xml_file, cell_info):
+def he_to_binary_mask(im_file, xml_file, config):
     with Image.open(im_file) as img:
         ncol, nrow = img.size
 
@@ -136,8 +154,13 @@ def he_to_binary_mask(im_file, xml_file, cell_info):
             vertices.append([x, y])
         vertices = np.array(vertices)
 
-        smaller_x = vertices[:, 0]
-        smaller_y = vertices[:, 1]
+        if "shrink" in config and config["shrink"]["use"]:
+            shrunk_vertices = shrink_vertices(vertices, config["shrink"]["factor"])
+            smaller_x = shrunk_vertices[:, 0]
+            smaller_y = shrunk_vertices[:, 1]
+        else:
+            smaller_x = vertices[:, 0]
+            smaller_y = vertices[:, 1]
 
         polygon_mask = poly2mask(smaller_y, smaller_x, (nrow, ncol))
         boarder_mask += get_boarder(polygon_mask)
@@ -156,19 +179,20 @@ def he_to_binary_mask(im_file, xml_file, cell_info):
             color_mask[:, :, i] = color_mask[:, :, i] + random_color[i] * polygon_mask
 
     filename = Path(im_file).stem
-    cell_info[str(filename)] = {
+    cell_info = {
+        "id": filename,
         "num_cells": len(regions),
         "mean_cell_area": np.mean(cell_areas),
         "std_cell_area": np.std(cell_areas),
         "mean_cell_perimeter": np.mean(cell_perimeters),
         "std_cell_perimeter": np.std(cell_perimeters),
-        "cell_density": len(regions) / (nrow * ncol),
         "total_cell_area": np.sum(cell_areas),
         "image_width": ncol,
         "image_height": nrow,
+        "overlap_area": np.sum(overlap_mask),
     }
 
-    return binary_mask, color_mask, overlap_mask, boarder_mask
+    return binary_mask, color_mask, overlap_mask, boarder_mask, cell_info
 
 
 def show_mask(binary_mask, color_mask, save_path=None):
@@ -268,7 +292,7 @@ def get_matching_files(xml_dir, tif_dir):
     ]
 
 
-def augment_data_after_masking(file_pairs, methods, data_dir):
+def augment_data_after_masking(file_pairs, methods, data_dir, cell_info):
     AUGMENTATION_METHODS = {
         # name: function
     }
@@ -281,7 +305,7 @@ def augment_data_after_masking(file_pairs, methods, data_dir):
             logging.warning(f"Unknown augmentation method: {method_name}")
             continue
 
-        file_pairs = augment_func(file_pairs, methods[method_name], data_dir)
+        file_pairs = augment_func(file_pairs, methods[method_name], data_dir, cell_info)
 
     return file_pairs
 
@@ -312,18 +336,15 @@ def _create_sub_dirs(base_dir):
     color_mask_dir = base_dir / "processed/color_masks"
     overlap_mask_dir = base_dir / "processed/overlap"
     boarder_mask_dir = base_dir / "processed/boarder"
-    cell_count_dir = base_dir / "processed/cell_counts"
     no_overlap_mask_dir = base_dir / "processed/no_overlap"
     os.makedirs(binary_mask_dir, exist_ok=True)
     os.makedirs(color_mask_dir, exist_ok=True)
-    os.makedirs(cell_count_dir, exist_ok=True)
     os.makedirs(overlap_mask_dir, exist_ok=True)
     os.makedirs(boarder_mask_dir, exist_ok=True)
     os.makedirs(no_overlap_mask_dir, exist_ok=True)
     return (
         binary_mask_dir,
         boarder_mask_dir,
-        cell_count_dir,
         color_mask_dir,
         overlap_mask_dir,
         no_overlap_mask_dir,
@@ -344,15 +365,14 @@ def main(config):
     data_c = config["data"][set_type]
 
     base_dir = config["dir"] / set_type
-    binary_dir, boarder_dir, cell_count_dir, color_dir, overlap_dir, no_overlap_dir = (
-        _create_sub_dirs(base_dir)
-    )
+    binary_dir, boarder_dir, color_dir, overlap_dir, no_overlap_dir = _create_sub_dirs(base_dir)
 
     # Create prepared_images directory
     prepared_images_dir = base_dir / "prepared_images"
     prepared_images_dir.mkdir(parents=True, exist_ok=True)
+    cell_info = pd.DataFrame()
 
-    if config["take_preprocessed"]:
+    if "take_preprocessed" in config["data"] and config["data"]["take_preprocessed"]:
         logger.info(f"Skipping preprocessing for {set_type}")
         prepared_images_dir = config["data_dir"] / set_type / "prepared_images"
         prepared_mask_dir = config["data_dir"] / set_type / "prepared_binary_masks"
@@ -364,12 +384,12 @@ def main(config):
             img = Image.open(prepared_images_dir / img_path)
             mask = Image.open(prepared_mask_dir / mask_path)
             processed_files.append((img_path, img, mask, None, None))
-        file_pairs = processed_files
     else:
         file_pairs = get_matching_files(
             config["data_dir"] / set_type / "Annotations",
             config["data_dir"] / set_type / "Tissue Images",
         )
+
         if data_c["limit"]:
             file_pairs = file_pairs[: data_c["limit"]]
 
@@ -378,13 +398,11 @@ def main(config):
         )
 
         processed_files = []
-        cell_info = pd.DataFrame()
         for xml_path, tif_path in tqdm(
             file_pairs, desc=f"Processing images for {set_type}"
         ):
-            binary_mask, color_mask, overlap_mask, boarder_mask = he_to_binary_mask(
-                tif_path, xml_path, cell_info
-            )
+            binary_mask, color_mask, overlap_mask, boarder_mask, stats = he_to_binary_mask(tif_path, xml_path, data_c)
+            cell_info = pd.concat([cell_info, pd.DataFrame([stats]).set_index("id")])
             binary_mask_no_overlap = (binary_mask > 0).astype(np.float32) - overlap_mask
             img = np.array(Image.open(tif_path))
 
@@ -397,11 +415,11 @@ def main(config):
 
             processed_files.append((base_name, img, binary_mask, color_mask, xml_path))
 
-        cell_info.to_csv(cell_count_dir / "cell_counts.csv")
+    file_pairs = augment_data_after_masking(processed_files, data_c["augment_after"], base_dir, cell_info)
+    cell_info.to_csv(base_dir / "actual_cell_counts.csv", index=True)
 
-    new_files = []
-    if data_c["patchify"]:
-        new_files = create_patches(processed_files, data_c["patch"], base_dir)
+    if "patch" in config["data"] and config["data"]["patch"]:
+        create_patches(file_pairs, config["data"]["patch"], base_dir)
     else:
         for xml_path, tif_path in tqdm(
             file_pairs, desc="Copying files to prepared directory"
@@ -411,12 +429,6 @@ def main(config):
             img = Image.open(tif_path)
             new_image_path = prepared_images_dir / f"{base_name}.{out_format}"
             img.save(new_image_path)
-
-            new_mask_path = binary_dir / f"{base_name}.{out_format}"
-
-            new_files.append((str(new_image_path), str(new_mask_path)))
-
-    augment_data_after_masking(new_files, data_c["augment_after"], base_dir)
 
 
 if __name__ == "__main__":

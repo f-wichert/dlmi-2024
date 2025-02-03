@@ -6,25 +6,24 @@ from dlmi.utils.utils import load_experiment_config
 from tqdm import tqdm
 
 
+def single_image(config):
+    set_type = "train"
+    image = "TCGA-A7-A13F-01Z-00-DX1.png"
+    mask_dir = config["dir"] / set_type / "processed" / "binary_masks"
+
+    mask_path = mask_dir / image
+    count = count_cells(mask_path)
+    print(f"Number of cells in {image}: {count}")
+
+
 def main(config):
-    cell_counts = {}
-    pred_dir = config["data_dir"] / "test" / "predictions"
-    mask_dir = config["data_dir"] / "test" / "processed" / "binary_masks"
+    set_type = "test"
+    pred_dir = config["dir"] / set_type / "predictions"
+    df = pd.read_csv(config["dir"] / set_type / "actual_cell_counts.csv")
 
-    pred_files = list(pred_dir.glob("*.png"))
-    mask_files = list(mask_dir.glob("*.png"))
+    df['predicted_cell_count'] = [count_cells(f) for f in tqdm(pred_dir.glob("*.png"))]
 
-    for pred_f, mask_f in tqdm(zip(pred_files, mask_files), desc="Counting cells", total=len(pred_files)):
-        pred_num_cells = count_cells(pred_f)
-        actual_num_cells = count_cells(mask_f)
-        cell_counts[mask_f.stem] = {
-            'predicted_count': pred_num_cells,
-            'true_count': actual_num_cells
-        }
-
-    # Save results
-    df = pd.DataFrame.from_dict(cell_counts, orient='index')
-    df.to_csv(config["dir"] / "cell_counts.csv")
+    df.to_csv(config["dir"] / set_type / "predicted_cell_counts.csv", index=True)
 
 
 if __name__ == "__main__":

@@ -2,31 +2,29 @@ baseline:
   name: "baseline"
   data:
     out_format: "png"
+    take_preprocessed: false
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
     train:
       limit: false
       patchify: true
       augment_before:
       augment_after:
-      patch:
-        size_x: 128
-        size_y: 128
-        step: 128
     test:
       limit: false
       patchify: true
       augment_before:
       augment_after:
-      patch:
-        size_x: 128
-        size_y: 128
-        step: 128
 
   unet:
     depth: 4
     pool_factor: 2
 
   train:
-    max_epochs: 50
+    max_epochs: 25
     learning_rate: 0.0002
     batch_size: 32
     use_validation: true
@@ -36,73 +34,106 @@ baseline:
     use_best_model: true  # if false load from model_name
     model_name: "best_model.ckpt"
 
-#baseline_large_patch:
-# always OOM patch size too large
-#  name: "baseline_large_patch"
-#  data:
-#    out_format: "png"
-#    train:
-#      limit: false
-#      patchify: true
-#      augment_before:
-#      augment_after:
-#      patch:
-#        size_x: 256
-#        size_y: 256
-#        step: 256
-#    test:
-#      limit: false
-#      patchify: true
-#      augment_before:
-#      augment_after:
-#      patch:
-#        size_x: 256
-#        size_y: 256
-#        step: 256
-#
-#  unet:
-#    depth: 4
-#    pool_factor: 4
-#
-#  train:
-#    max_epochs: 200
-#    learning_rate: 0.0005
-#    batch_size: 2
-#    use_validation: true
-#    validation_size: 0.15  # of trainings data
-#  test:
-#    use_best_model: true  # if false load from model_name
-#    model_name: "best_model.ckpt"
-
-baseline_small_patch:
-  name: "baseline_small_patch"
+baseline_shrink:
+  name: "baseline_shrink"
   data:
     out_format: "png"
+    take_preprocessed: false
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
     train:
       limit: false
       patchify: true
+      shrink:
+        use: true
+        factor: 0.4
       augment_before:
       augment_after:
-      patch:
-        size_x: 32
-        size_y: 32
-        step: 32
     test:
       limit: false
       patchify: true
       augment_before:
       augment_after:
-      patch:
-        size_x: 32
-        size_y: 32
-        step: 32
 
   unet:
     depth: 4
     pool_factor: 2
 
   train:
-    max_epochs: 200
+    max_epochs: 18
+    learning_rate: 0.0002
+    batch_size: 32
+    use_validation: true
+    validation_size: 0.15  # of trainings data
+
+  test:
+    use_best_model: true  # if false load from model_name
+    model_name: "best_model.ckpt"
+
+baseline_deep:
+  name: "baseline_deep"
+  data:
+    take_preprocessed: false
+    out_format: "png"
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
+    train:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+    test:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+
+  unet:
+    depth: 6
+    pool_factor: 2
+
+  train:
+    max_epochs: 25
+    learning_rate: 0.0002
+    batch_size: 32
+    use_validation: true
+    validation_size: 0.15  # of trainings data
+
+  test:
+    use_best_model: true  # if false load from model_name
+    model_name: "best_model.ckpt"
+
+baseline_small_patch:
+  name: "baseline_small_patch"
+  data:
+    take_preprocessed: false
+    out_format: "png"
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
+    train:
+      limit: false
+      augment_before:
+      augment_after:
+    test:
+      limit: false
+      augment_before:
+      augment_after:
+
+  unet:
+    depth: 4
+    pool_factor: 2
+
+  train:
+    max_epochs: 18
     learning_rate: 0.0005
     batch_size: 64
     use_validation: true
@@ -111,37 +142,219 @@ baseline_small_patch:
     use_best_model: true  # if false load from model_name
     model_name: "best_model.ckpt"
 
-baseline_small_patch_deep:
+baseline_shrink_deep:
   name: "baseline_small_patch_deep"
   data:
     out_format: "png"
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
     train:
       limit: false
       patchify: true
       augment_before:
       augment_after:
-      patch:
-        size_x: 32
-        size_y: 32
-        step: 32
     test:
       limit: false
       patchify: true
       augment_before:
       augment_after:
-      patch:
-        size_x: 32
-        size_y: 32
-        step: 32
 
   unet:
-    depth: 8
+    depth: 6
     pool_factor: 2
 
   train:
-    max_epochs: 200
+    max_epochs: 50
     learning_rate: 0.0005
     batch_size: 64
+    use_validation: true
+    validation_size: 0.15  # of trainings data
+  test:
+    use_best_model: true  # if false load from model_name
+    model_name: "best_model.ckpt"
+
+shrink_01:
+  name: "shrink_01"
+  data:
+    out_format: "png"
+    shrink:
+      use: true
+      factor: 0.1
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
+    train:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+    test:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+
+  unet:
+    depth: 4
+    pool_factor: 2
+
+  train:
+    max_epochs: 50
+    learning_rate: 0.0005
+    batch_size: 32
+    use_validation: true
+    validation_size: 0.15  # of trainings data
+  test:
+    use_best_model: true  # if false load from model_name
+    model_name: "best_model.ckpt"
+
+shrink_02:
+  name: "shrink_02"
+  data:
+    out_format: "png"
+    shrink:
+      use: true
+      factor: 0.2
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
+    train:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+    test:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+
+  unet:
+    depth: 4
+    pool_factor: 2
+
+  train:
+    max_epochs: 50
+    learning_rate: 0.0005
+    batch_size: 32
+    use_validation: true
+    validation_size: 0.15  # of trainings data
+  test:
+    use_best_model: true  # if false load from model_name
+    model_name: "best_model.ckpt"
+
+shrink_03:
+  name: "shrink_03"
+  data:
+    out_format: "png"
+    shrink:
+      use: true
+      factor: 0.3
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
+    train:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+    test:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+
+  unet:
+    depth: 4
+    pool_factor: 2
+
+  train:
+    max_epochs: 50
+    learning_rate: 0.0005
+    batch_size: 32
+    use_validation: true
+    validation_size: 0.15  # of trainings data
+  test:
+    use_best_model: true  # if false load from model_name
+    model_name: "best_model.ckpt"
+
+shrink_04:
+  name: "shrink_04"
+  data:
+    out_format: "png"
+    shrink:
+      use: true
+      factor: 0.4
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
+    train:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+    test:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+
+  unet:
+    depth: 4
+    pool_factor: 2
+
+  train:
+    max_epochs: 50
+    learning_rate: 0.0005
+    batch_size: 32
+    use_validation: true
+    validation_size: 0.15  # of trainings data
+  test:
+    use_best_model: true  # if false load from model_name
+    model_name: "best_model.ckpt"
+
+shrink_05:
+  name: "shrink_05"
+  data:
+    out_format: "png"
+    shrink:
+      use: true
+      factor: 0.5
+    patch:
+      use: true
+      size_x: 128
+      size_y: 128
+      step: 128
+    train:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+    test:
+      limit: false
+      patchify: true
+      augment_before:
+      augment_after:
+
+  unet:
+    depth: 4
+    pool_factor: 2
+
+  train:
+    max_epochs: 50
+    learning_rate: 0.0005
+    batch_size: 32
     use_validation: true
     validation_size: 0.15  # of trainings data
   test:

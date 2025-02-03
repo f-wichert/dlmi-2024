@@ -14,9 +14,14 @@ from dlmi.train.model.segmentation_model import SegmentationModel
 from dlmi.utils.utils import load_experiment_config
 
 
-def load_model(checkpoint_path):
+def load_model(checkpoint_path, unet_config=None):
     """Load the trained model from checkpoint."""
-    model = UNet(in_channels=3, out_channels=2)
+    if unet_config is None:
+        model = UNet(in_channels=3, out_channels=2)
+    else:
+        model = UNet(in_channels=3, out_channels=2,
+                     depth=unet_config["depth"], pool_factor=unet_config["pool_factor"])
+
     lit_model = SegmentationModel(model, learning_rate=0.001)
 
     checkpoint = torch.load(checkpoint_path)
@@ -137,7 +142,8 @@ def main(config):
     os.makedirs(pred_dir, exist_ok=True)
     os.makedirs(pred_dir_patches, exist_ok=True)
 
-    model = load_model(checkpoint_path)
+    unet_config = config["unet"] if config["unet"] else None
+    model = load_model(checkpoint_path, unet_config)
 
     inference(model, image_patch_dir, pred_dir_patches)
 
@@ -148,8 +154,8 @@ def main(config):
 
     print(f"Found {len(base_names)} original images to reconstruct")
 
-    p_config = config["data"]["test"]["patch"]
-    if config["data"]["test"]["patchify"]:
+    if "patch" in config["data"] and config["data"]["patch"]["use"]:
+        p_config = config["data"]["patch"]
         for base_name in tqdm(base_names, desc="Reconstructing images"):
             reconstructed = reconstruct_image(
                 pred_dir_patches, pred_files, base_name,

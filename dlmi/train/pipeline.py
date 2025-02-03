@@ -88,6 +88,8 @@ def main(config):
         max_epochs=max_epochs,
         callbacks=[best_model_callback],
         log_every_n_steps=1,
+        accumulate_grad_batches=1,
+        devices=[7],
     )
 
     trainer.fit(

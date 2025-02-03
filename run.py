@@ -1,4 +1,3 @@
-import logging
 import os
 import subprocess
 from pathlib import Path
@@ -23,10 +22,10 @@ def run_command(command):
 def run_experiment(name):
     # Preprocess
     preprocess_cmd = f"python dlmi/preprocess/pipeline.py {name}"
-    preprocess_cmd += f" --dataset_split train"
+    preprocess_cmd += " --dataset_split train"
     run_command(preprocess_cmd)
     preprocess_cmd = f"python dlmi/preprocess/pipeline.py {name}"
-    preprocess_cmd += f" --dataset_split test"
+    preprocess_cmd += " --dataset_split test"
     run_command(preprocess_cmd)
 
     # Train model
@@ -48,10 +47,10 @@ def main():
         config = yaml.safe_load(f)
 
     for exp in config.keys():
-        logging.info(f"Running experiment {exp}")
+        print(f"\n{'-' * 20}\nRunning experiment {exp}\n{'-' * 20}")
         run_experiment(exp)
 
-    # run_command(f"python steps/new_meta_eval.py")
+    run_command("python dlmi/evaluation/meta_eval.py")
 
 
 if __name__ == "__main__":
