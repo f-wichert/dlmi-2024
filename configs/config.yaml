@@ -142,40 +142,6 @@ baseline_small_patch:
     use_best_model: true  # if false load from model_name
     model_name: "best_model.ckpt"
 
-baseline_shrink_deep:
-  name: "baseline_small_patch_deep"
-  data:
-    out_format: "png"
-    patch:
-      use: true
-      size_x: 128
-      size_y: 128
-      step: 128
-    train:
-      limit: false
-      patchify: true
-      augment_before:
-      augment_after:
-    test:
-      limit: false
-      patchify: true
-      augment_before:
-      augment_after:
-
-  unet:
-    depth: 6
-    pool_factor: 2
-
-  train:
-    max_epochs: 50
-    learning_rate: 0.0005
-    batch_size: 64
-    use_validation: true
-    validation_size: 0.15  # of trainings data
-  test:
-    use_best_model: true  # if false load from model_name
-    model_name: "best_model.ckpt"
-
 shrink_01:
   name: "shrink_01"
   data:
