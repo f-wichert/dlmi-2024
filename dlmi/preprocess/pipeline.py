@@ -393,6 +393,9 @@ def main(config):
         if data_c["limit"]:
             file_pairs = file_pairs[: data_c["limit"]]
 
+        if "shrink" in config["data"]:
+            data_c.update({"shrink": config["data"]["shrink"]})
+
         file_pairs = augment_data_before_masking(
             file_pairs, data_c["augment_before"], base_dir
         )
