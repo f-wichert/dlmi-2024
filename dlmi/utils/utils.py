@@ -27,10 +27,10 @@ def load_experiment_config(experiment_name: str) -> t.Dict[str, t.Any]:
         logging.error(f"Experiment {experiment_name} not found")
         raise KeyError()
 
-    exp_config["dir"] = all_configs["experiments_dir"] / exp_config["name"]
-    os.makedirs(exp_config["dir"], exist_ok=True)
-
     exp_config.update(load_general_config())
     exp_config["data_dir"] = Path(exp_config["data_dir"])
+
+    exp_config["dir"] = exp_config["experiments_dir"] / exp_config["name"]
+    os.makedirs(exp_config["dir"], exist_ok=True)
 
     return exp_config
