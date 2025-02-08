@@ -7,7 +7,6 @@ import yaml
 
 def setup_environment():
     os.environ["PYTHONPATH"] = f"{os.environ.get('PYTHONPATH', '')}:./"
-    os.environ["KAGGLE_CONFIG_DIR"] = str(Path.cwd())
 
 
 def run_command(command):
@@ -20,22 +19,26 @@ def run_command(command):
 
 
 def run_experiment(name):
-    # Preprocess
-    preprocess_cmd = f"python dlmi/preprocess/pipeline.py {name}"
-    preprocess_cmd += " --dataset_split train"
-    run_command(preprocess_cmd)
-    preprocess_cmd = f"python dlmi/preprocess/pipeline.py {name}"
-    preprocess_cmd += " --dataset_split test"
-    run_command(preprocess_cmd)
+    try:
+        # Preprocess
+        preprocess_cmd = f"python dlmi/preprocess/pipeline.py {name}"
+        preprocess_cmd += " --dataset_split train"
+        run_command(preprocess_cmd)
+        preprocess_cmd = f"python dlmi/preprocess/pipeline.py {name}"
+        preprocess_cmd += " --dataset_split test"
+        run_command(preprocess_cmd)
 
-    # Train model
-    run_command(f"python dlmi/train/pipeline.py {name}")
+        # Train model
+        run_command(f"python dlmi/train/pipeline.py {name}")
 
-    # Test model
-    run_command(f"python dlmi/inference/pipeline.py {name}")
+        # Test model
+        run_command(f"python dlmi/inference/pipeline.py {name}")
 
-    # Evaluate
-    run_command(f"python dlmi/evaluate/pipeline.py {name}")
+        # Evaluate
+        run_command(f"python dlmi/evaluate/pipeline.py {name}")
+
+    except Exception as e:
+        print(f"Error running experiment {name}: {str(e)}")
 
 
 def main():
