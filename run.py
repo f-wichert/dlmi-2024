@@ -50,7 +50,7 @@ def main():
         print(f"\n{'-' * 20}\nRunning experiment {exp}\n{'-' * 20}")
         run_experiment(exp)
 
-    run_command("python dlmi/evaluation/meta_eval.py")
+    run_command("python dlmi/evaluate/meta_eval.py")
 
 
 if __name__ == "__main__":
