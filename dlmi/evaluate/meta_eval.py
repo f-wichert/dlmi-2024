@@ -15,9 +15,10 @@ def calculate_qq_error(actual: np.ndarray, predicted: np.ndarray) -> float:
 
 
 def calculate_image_metrics(actual: float, predicted: float) -> Dict:
+    epsilon = 1e-6
     abs_error = abs(actual - predicted)
     rel_error = abs_error / actual
-    qq_error = max(actual/predicted, predicted/actual)
+    qq_error = max(actual/(predicted + epsilon), predicted/(actual) + epsilon)
 
     return {
         'absolute_error': abs_error,

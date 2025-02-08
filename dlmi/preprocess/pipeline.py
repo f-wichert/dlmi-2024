@@ -3,19 +3,90 @@ import os
 import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import Tuple, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
+import torchvision.transforms as transforms
 from patchify import patchify
 from PIL import Image, ImageDraw
 from skimage.draw import polygon
 from skimage.morphology import binary_dilation
+from torch import Tensor
 from tqdm import tqdm
+from typing_extensions import override
 
 from dlmi.utils.utils import load_experiment_config
 
 logger = logging.getLogger(__name__)
+
+
+def augment_random(file_pairs, method_config, data_dir, cell_info):
+    torch.manual_seed(42)
+    augmented_files = []
+    bin_dir = data_dir / "prepared_binary_mask"
+    img_dir = data_dir / "prepared_images"
+    os.makedirs(bin_dir, exist_ok=True)
+    os.makedirs(img_dir, exist_ok=True)
+
+    for img_path, img, bin_mask, color_mask, xml_path in tqdm(file_pairs, desc="Augmenting data"):
+        base_name = Path(img_path).stem
+        img_size_x, img_size_y = img.shape[:2]
+        aug_methods = method_config["methods"]
+
+        for i in range(method_config["num_augmentations"]):
+            new_img_path = img_dir / f"{base_name}_aug_{i}"
+            new_bin_path = bin_dir / f"{base_name}_aug_{i}"
+            transformations = []
+            if "random_crop" in aug_methods:
+                transformations.append(transforms.RandomCrop(size=(img_size_x * 0.8, img_size_y * 0.8)))
+            if "random_rotation" in aug_methods:
+                transformations.append(transforms.RandomRotation(degrees=(15, 75)))
+            if "random_horizontal_flip" in aug_methods:
+                transformations.append(transforms.RandomHorizontalFlip())
+            if "random_vertical_flip" in aug_methods:
+                transformations.append(transforms.RandomVerticalFlip())
+            if "gaussian_blur" in aug_methods:
+                transformations.append(transforms.GaussianBlur(kernel_size=3))
+            if "elastic_transform" in aug_methods:
+                transformations.append(transforms.ElasticTransform(alpha=8.0))
+
+            if "pick_random" in method_config:
+                transformations = np.random.choice(transformations, method_config["pick_random"], replace=False)
+                transform = transforms.Compose(transformations)
+
+            if "color_jitter" in method_config and method_config["color_jitter"]:
+                color_transform = transforms.ColorJitter(
+                    brightness=0.2,
+                    contrast=0.2,
+                    saturation=0.1,
+                    hue=0.02
+                )
+            else:
+                color_transform = None
+
+            # Convert numpy arrays to PIL Images with correct modes
+            img_pil = Image.fromarray(img.astype('uint8'), 'RGB')  # For color images
+            bin_mask_pil = Image.fromarray(bin_mask.astype('uint8'), 'L')  # For binary masks ('L' = grayscale)
+
+            # Apply transforms
+            if color_transform:
+                img_transformed = color_transform(transform(img_pil))
+            else:
+                img_transformed = transform(img_pil)
+            bin_mask_transformed = transform(bin_mask_pil)
+
+            # Convert back to numpy arrays
+            img_transformed = np.array(img_transformed)
+            bin_mask_transformed = np.array(bin_mask_transformed)
+
+            save_mask(img_transformed, new_img_path, "png")
+            save_mask(bin_mask_transformed, new_bin_path, "png")
+            augmented_files.append((new_img_path, img_transformed, bin_mask_transformed, color_mask, xml_path))
+
+    return augmented_files
 
 
 def calculate_padding(dimension, patch_size):
@@ -31,7 +102,7 @@ def create_patches(file_pairs, config, data_dir):
     patch_img_dir.mkdir(parents=True, exist_ok=True)
     patch_bin_dir.mkdir(parents=True, exist_ok=True)
 
-    augmented_files = []
+    patches_files = []
     for img_path, img, bin_mask, color_mask, xml_path in tqdm(file_pairs, desc="Creating patches"):
         if not isinstance(img, np.ndarray):
             img = np.array(img)
@@ -91,11 +162,11 @@ def create_patches(file_pairs, config, data_dir):
                 Image.fromarray(img_patch).save(img_patch_path)
                 Image.fromarray(bin_patch).save(bin_patch_path)
 
-                augmented_files.append(
-                    (str(img_patch_path), str(bin_patch_path), "", xml_path)
+                patches_files.append(
+                    (str(img_patch_path), img_patch, bin_patch, "", xml_path)
                 )
 
-    return augmented_files
+    return patches_files
 
 
 def shrink_vertices(vertices, shrink_factor=0.8):
@@ -295,6 +366,7 @@ def get_matching_files(xml_dir, tif_dir):
 def augment_data_after_masking(file_pairs, methods, data_dir, cell_info):
     AUGMENTATION_METHODS = {
         # name: function
+        "augment_random": augment_random,
     }
     if not methods:
         return file_pairs
@@ -418,11 +490,11 @@ def main(config):
 
             processed_files.append((base_name, img, binary_mask, color_mask, xml_path))
 
-    file_pairs = augment_data_after_masking(processed_files, data_c["augment_after"], base_dir, cell_info)
     cell_info.to_csv(base_dir / "actual_cell_counts.csv", index=True)
 
     if "patch" in config["data"] and config["data"]["patch"]:
-        create_patches(file_pairs, config["data"]["patch"], base_dir)
+        patches_files = create_patches(processed_files, config["data"]["patch"], base_dir)
+        file_pairs = augment_data_after_masking(patches_files, data_c["augment_after"], base_dir, cell_info)
     else:
         for xml_path, tif_path in tqdm(
             file_pairs, desc="Copying files to prepared directory"

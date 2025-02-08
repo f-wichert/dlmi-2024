@@ -89,7 +89,7 @@ def main(config):
         callbacks=[best_model_callback],
         log_every_n_steps=1,
         accumulate_grad_batches=1,
-        devices=[7],
+        # devices=[7],
     )
 
     trainer.fit(
