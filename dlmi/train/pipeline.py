@@ -16,6 +16,10 @@ from dlmi.utils.utils import load_experiment_config
 def main(config):
     max_epochs = config["train"]["max_epochs"]
     learning_rate = config["train"]["learning_rate"]
+    if "count_weight" in config["train"]:
+        count_weight = config["train"]["count_weight"]
+    else:
+        count_weight = 0.0
 
     image_patch_dir = config["dir"] / "train" / "prepared_images"
     mask_patch_dir = config["dir"] / "train" / "prepared_binary_mask"
@@ -60,7 +64,7 @@ def main(config):
         depth=config["unet"]["depth"],
         pool_factor=config["unet"]["pool_factor"],
     )
-    lit_model = SegmentationModel(model, learning_rate=learning_rate)
+    lit_model = SegmentationModel(model, learning_rate=learning_rate, count_weight=count_weight)
 
     # checkpoint_callback = ModelCheckpoint(
     #     monitor="train_loss",
@@ -89,7 +93,6 @@ def main(config):
         callbacks=[best_model_callback],
         log_every_n_steps=1,
         accumulate_grad_batches=1,
-        # devices=[7],
     )
 
     trainer.fit(
