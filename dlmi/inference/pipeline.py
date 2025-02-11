@@ -45,10 +45,6 @@ def preprocess_image(image_path):
 
     image = image.unsqueeze(0)
 
-    if image.shape[-2:] != (128, 128):
-        print(f"Warning: Resizing image from {image.shape[-2:]} to (128, 128)")
-        image = torch.nn.functional.interpolate(image, size=(128, 128), mode='bilinear', align_corners=False)
-
     return image
 
 
@@ -94,12 +90,12 @@ def get_base_image_names(patch_filenames):
     # Example: TCGA-GL-6846-01A-01-BS1_patch_bin_0_3.png -> TCGA-GL-6846-01A-01-BS1
     base_names = set()
     for filename in patch_filenames:
-        base_name = filename.split('_patch_img_')[0]
+        base_name = filename.split('_patch_')[0]
         base_names.add(base_name)
     return list(base_names)
 
 
-def get_patch_coordinates(filename, match="_patch_img_"):
+def get_patch_coordinates(filename, match="_patch_"):
     """Extract patch coordinates from filename."""
     # Example: TCGA-GL-6846-01A-01-BS1_patch_bin_0_3.png -> (0, 3)
     parts = filename.split(match)[1]

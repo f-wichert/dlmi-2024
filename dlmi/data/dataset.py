@@ -23,8 +23,8 @@ class CellSegmentationDataset(Dataset):
             self.mask_files
         ), "Mismatch between image and mask count"
 
-        # for img_file, mask_file in zip(self.image_files, self.mask_files):
-        #     assert img_file == mask_file, f"File mismatch: {img_file} and {mask_file}"
+        for img_file, mask_file in zip(self.image_files, self.mask_files):
+            assert img_file == mask_file, f"File mismatch: {img_file} and {mask_file}"
 
     def __len__(self):
         return len(self.image_files)

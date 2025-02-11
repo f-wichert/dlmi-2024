@@ -3,7 +3,6 @@ import os
 import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
 from pathlib import Path
-from typing import Tuple, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,11 +11,9 @@ import torch
 import torchvision.transforms as transforms
 from patchify import patchify
 from PIL import Image, ImageDraw
-from skimage.draw import polygon
+from skimage.draw import polygon, disk
 from skimage.morphology import binary_dilation
-from torch import Tensor
 from tqdm import tqdm
-from typing_extensions import override
 
 from dlmi.utils.utils import load_experiment_config
 
@@ -55,6 +52,8 @@ def augment_random(file_pairs, method_config, data_dir, cell_info):
 
             if "pick_random" in method_config:
                 transformations = np.random.choice(transformations, method_config["pick_random"], replace=False)
+                transform = transforms.Compose(transformations)
+            else:
                 transform = transforms.Compose(transformations)
 
             if "color_jitter" in method_config and method_config["color_jitter"]:
@@ -142,8 +141,8 @@ def create_patches(file_pairs, config, data_dir):
 
         for i in range(img_patches.shape[0]):
             for j in range(img_patches.shape[1]):
-                img_patch_path = patch_img_dir / f"{base_name}_patch_img_{i}_{j}.png"
-                bin_patch_path = patch_bin_dir / f"{base_name}_patch_bin_{i}_{j}.png"
+                img_patch_path = patch_img_dir / f"{base_name}_patch_{i}_{j}.png"
+                bin_patch_path = patch_bin_dir / f"{base_name}_patch_{i}_{j}.png"
 
                 img_patch = img_patches[i, j].squeeze()
                 bin_patch = bin_patches[i, j].squeeze()
@@ -185,13 +184,22 @@ def shrink_vertices(vertices, shrink_factor=0.8):
     return shrunk_vertices
 
 
-def poly2mask(vertex_row_coords, vertex_col_coords, shape):
+def poly2mask(vertex_row_coords, vertex_col_coords, shape, min_area=80, circle_radius=5):
     """Create mask from polygon vertices (similar to MATLAB's poly2mask)."""
     fill_row_coords, fill_col_coords = polygon(
         vertex_row_coords, vertex_col_coords, shape
     )
     mask = np.zeros(shape, dtype=np.uint8)
     mask[fill_row_coords, fill_col_coords] = 1
+    area = np.sum(mask)
+    if area < min_area:
+        # Calculate center of polygon
+        center_row = int(np.mean(vertex_row_coords))
+        center_col = int(np.mean(vertex_col_coords))
+
+        # Add circle
+        circle_row, circle_col = disk((center_row, center_col), circle_radius, shape=shape)
+        mask[circle_row, circle_col] = 1
     return mask
 
 
