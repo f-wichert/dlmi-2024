@@ -18,12 +18,14 @@ def calculate_image_metrics(actual: float, predicted: float) -> Dict:
     epsilon = 1e-6
     abs_error = abs(actual - predicted)
     rel_error = abs_error / actual
-    qq_error = max(actual/(predicted + epsilon), predicted/(actual) + epsilon)
+    qq_error = max(actual / (predicted + epsilon), predicted / (actual + epsilon))
+    error_ratio = (predicted + epsilon) / (actual + epsilon)
 
     return {
         'absolute_error': abs_error,
         'relative_error': rel_error,
-        'qq_error': qq_error
+        'qq_error': qq_error,
+        'error_ratio': error_ratio
     }
 
 
@@ -82,10 +84,49 @@ def plot_results(results: Dict, image_results: pd.DataFrame, output_dir: Path):
     plt.savefig(output_dir / 'correlation_plot.png')
     plt.close()
 
+    val_dice_scores = {
+        'augment_blur': 0.6297659277915955,
+        'augment_flip': 0.5583277344703674,
+        'augment_rotation': 0.5149551033973694,
+        'no_augment_size_256_depth_6': 0.428,
+        'augment_all': 0.4326605796813965,
+        'no_augment_size_64': 0.7126829028129578,
+        'no_augment_size_256': 0.52659010887146,
+        'no_augment_depth_2': 0.5929386615753174,
+        'no_augment_depth_6': 0.6439461708068848,
+        'no_augment_default': 0.6410626173019409
+    }
+
+    plt.figure(figsize=(21, 9))
+
+    ax1 = plt.gca()
+    sns.swarmplot(data=image_results, x='experiment', y='relative_error',
+                  hue='image_id', legend=False, ax=ax1)
+    ax1.set_xticklabels(ax1.get_xticklabels(), rotation=45, ha='right')
+    ax1.set_ylabel('Relative Error')
+    plt.ylim(-0.1, 2.6)
+
+    ax2 = ax1.twinx()
+    dice_data = pd.DataFrame({
+        'experiment': val_dice_scores.keys(),
+        'dice_score': val_dice_scores.values()
+    })
+    ax2.plot(range(len(dice_data)), dice_data['dice_score'],
+             color='blue', marker='s', linestyle=None, linewidth=0, label='Dice Score', )
+    ax2.grid(False)
+    ax2.set_ylabel('Dice Score', color='blue')
+    ax2.tick_params(axis='y', labelcolor='blue')
+    ax2.set_ylim(0, 1)
+
+    plt.tight_layout()
+    plt.xlabel('')
+    plt.savefig(output_dir / 'error_distribution_with_dice.png', bbox_inches='tight')
+    plt.close()
+
     plt.figure(figsize=(12, 6))
-    sns.boxplot(data=image_results, x='experiment', y='relative_error')
+    sns.swarmplot(data=image_results, x='experiment', y='relative_error', hue='image_id', legend=False)
     plt.xticks(rotation=45)
-    plt.title('Distribution of Relative Errors')
+    plt.xlabel('')
     plt.tight_layout()
     plt.savefig(output_dir / 'error_distribution.png')
     plt.close()
@@ -96,6 +137,26 @@ def plot_results(results: Dict, image_results: pd.DataFrame, output_dir: Path):
     plt.title('Error vs Mean Cell Area')
     plt.tight_layout()
     plt.savefig(output_dir / 'error_vs_area.png')
+    plt.close()
+
+    plt.figure(figsize=(12, 6))
+    sns.boxplot(data=image_results, x='experiment', y='error_ratio')
+    plt.axhline(y=1, color='r', linestyle='--', alpha=0.5)
+    plt.xticks(rotation=45)
+    plt.title('Distribution of Error Ratios\n(>1: Over-prediction, <1: Under-prediction)')
+    plt.tight_layout()
+    plt.savefig(output_dir / 'error_ratio_distribution.png')
+    plt.close()
+
+    # Add error ratio vs cell count plot
+    plt.figure(figsize=(10, 6))
+    sns.scatterplot(data=image_results, x='actual_count', y='error_ratio', hue='experiment', alpha=0.6)
+    plt.axhline(y=1, color='r', linestyle='--', alpha=0.5)
+    plt.title('Error Ratio vs Actual Cell Count')
+    plt.xlabel('Actual Cell Count')
+    plt.ylabel('Error Ratio (Predicted/Actual)')
+    plt.tight_layout()
+    plt.savefig(output_dir / 'error_ratio_vs_count.png')
     plt.close()
 
 
